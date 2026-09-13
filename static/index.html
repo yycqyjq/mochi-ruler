@@ -1,87 +1,104 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="zh-CN">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>墨尺 · 网文质检</title>
-<link rel="stylesheet" href="/static/style.css">
-</head>
-<body>
-
-<header>
-  <div class="brand">
-    <span class="logo">墨尺</span>
-    <span class="sub">网文质检 · 满分 10 分越高越好 · 对照预置基准</span>
-  </div>
-  <button id="theme" title="切换主题">◐</button>
-</header>
-
-<main>
-  <section class="panel input-panel">
-    <div class="panel-head">
-      <h2>输入</h2>
-      <div class="acts">
-        <label class="btn ghost" title="可多选">
-          选文件<input type="file" id="file" accept=".txt,.md,.markdown,text/plain,text/markdown" multiple hidden>
-        </label>
-        <label class="btn ghost" title="载入整个文件夹">
-          选文件夹<input type="file" id="dir" webkitdirectory directory multiple hidden>
-        </label>
-        <button class="btn ghost" id="demo">示例</button>
-        <button class="btn ghost" id="clear">清空</button>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>墨尺 · 网文质检</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <header>
+      <div class="brand">
+        <span class="logo">墨尺</span>
+        <span class="sub">网文质检 · 满分 10 分 · 对照预置基准</span>
       </div>
-    </div>
-    <div class="formats">
-      <span class="chip">.txt</span>
-      <span class="chip">.md</span>
-      <span class="chip">.markdown</span>
-      <span class="dim">可多选 · 可整个文件夹 · 也可直接拖进来</span>
-    </div>
-    <div id="sourcebar" class="sourcebar" hidden>
-      <div class="source-pill">
-        <span class="folder-mark">📁</span>
-        <span id="source-name" class="source-name">文件夹</span>
-        <span id="source-count" class="source-count"></span>
-        <button id="source-remove" class="source-remove" title="移除来源">×</button>
-        <div id="source-info" class="source-info"></div>
+      <button id="theme" title="切换主题">◐</button>
+    </header>
+
+    <main>
+      <section class="panel input-panel">
+        <div class="panel-head">
+          <h2>输入</h2>
+          <div class="acts">
+            <label class="btn ghost" title="可多选">
+              选文件<input
+                type="file"
+                id="file"
+                accept=".txt,.md,.markdown,text/plain,text/markdown"
+                multiple
+                hidden
+              />
+            </label>
+            <label class="btn ghost" title="载入整个文件夹">
+              选文件夹<input
+                type="file"
+                id="dir"
+                webkitdirectory
+                directory
+                multiple
+                hidden
+              />
+            </label>
+            <button class="btn ghost" id="demo">示例</button>
+            <button class="btn ghost" id="clear">清空</button>
+          </div>
+        </div>
+        <div class="formats">
+          <span class="chip">.txt</span>
+          <span class="chip">.md</span>
+          <span class="chip">.markdown</span>
+          <span class="dim">可多选 · 可整个文件夹 · 也可直接拖进来</span>
+        </div>
+        <div id="sourcebar" class="sourcebar" hidden>
+          <div class="source-pill">
+            <span class="folder-mark">📁</span>
+            <span id="source-name" class="source-name">文件夹</span>
+            <span id="source-count" class="source-count"></span>
+            <button id="source-remove" class="source-remove" title="移除来源">
+              ×
+            </button>
+            <div id="source-info" class="source-info"></div>
+          </div>
+        </div>
+        <textarea
+          id="text"
+          placeholder="粘贴小说正文…&#10;&#10;或把 .txt / .md 文件（乃至整个文件夹）直接拖到这里&#10;&#10;支持 Markdown 分章（# 第一章 标题），会自动按章检测。"
+        ></textarea>
+        <div class="run-row">
+          <button class="btn primary" id="run">开始检测</button>
+          <span class="dim kbd">⌘/Ctrl + Enter</span>
+        </div>
+        <div id="hint" class="hint"></div>
+      </section>
+
+      <div id="toast" class="toast" role="status" aria-live="polite">
+        <div id="toast-title" class="toast-title">提示</div>
+        <div id="toast-body" class="toast-body"></div>
       </div>
-    </div>
-    <textarea id="text" placeholder="粘贴小说正文…&#10;&#10;或把 .txt / .md 文件（乃至整个文件夹）直接拖到这里&#10;&#10;支持 Markdown 分章（# 第一章 标题），会自动按章检测。"></textarea>
-    <div class="run-row">
-      <button class="btn primary" id="run">开始检测</button>
-      <span class="dim kbd">⌘/Ctrl + Enter</span>
-    </div>
-    <div id="hint" class="hint"></div>
-  </section>
 
-  <div id="toast" class="toast" role="status" aria-live="polite">
-    <div id="toast-title" class="toast-title">提示</div>
-    <div id="toast-body" class="toast-body"></div>
-  </div>
+      <section class="panel result-panel">
+        <div id="empty" class="empty">
+          <div class="empty-icon">尺</div>
+          <p>左侧粘贴正文，点「开始检测」</p>
+          <p class="dim">30 项指标各 0–10 分 · 逐项对照基准 · 不改动你的文件</p>
+        </div>
 
-  <section class="panel result-panel">
-    <div id="empty" class="empty">
-      <div class="empty-icon">尺</div>
-      <p>左侧粘贴正文，点「开始检测」</p>
-      <p class="dim">30 项指标各 0–10 分 · 逐项对照基准 · 不改动你的文件</p>
-    </div>
+        <div id="result" hidden>
+          <div class="meta" id="meta"></div>
 
-    <div id="result" hidden>
-      <div class="meta" id="meta"></div>
+          <div id="totalcard" class="totalcard"></div>
 
-      <div id="totalcard" class="totalcard"></div>
+          <div class="scores" id="scores"></div>
 
-      <div class="scores" id="scores"></div>
+          <h3>逐项对比 <span class="dim" id="mcount"></span></h3>
+          <div class="metrics" id="metrics"></div>
 
-      <h3>逐项对比 <span class="dim" id="mcount"></span></h3>
-      <div class="metrics" id="metrics"></div>
+          <h3 id="chtitle">逐章</h3>
+          <div class="chapters" id="chapters"></div>
+        </div>
+      </section>
+    </main>
 
-      <h3 id="chtitle">逐章</h3>
-      <div class="chapters" id="chapters"></div>
-    </div>
-  </section>
-</main>
-
-<script src="/static/app.js"></script>
-</body>
+    <script src="/static/app.js"></script>
+  </body>
 </html>
