@@ -157,15 +157,19 @@ function render(d) {
       </div>
     </div>`;
 
-  // 五维分数卡，全部 0–10、越高越好。
+  // 五维分数卡，全部 0–10、越高越好；条上竖线标基准位置。
   $('#scores').innerHTML = d.dims.map(k => {
     const v = s[k], bench = d.bench[k];
     const pct = Math.max(2, Math.min(100, v * 10));
+    const bmark = Math.max(0, Math.min(100, bench * 10));
     const cls = scCls(v);
     return `<div class="sc">
-      <div class="k">${d.dimlabel[k]} <span class="dim">越高越好</span></div>
+      <div class="k">${d.dimlabel[k]}</div>
       <div class="v ${cls}">${v.toFixed(2)}</div>
-      <div class="bar"><i style="width:${pct}%;background:var(--${cls})"></i></div>
+      <div class="bar" title="你 ${v.toFixed(2)}　标杆 ${bench.toFixed(2)}">
+        <i style="width:${pct}%;background:var(--${cls})"></i>
+        <span class="mark" style="left:${bmark}%"></span>
+      </div>
       <div class="t">标杆 ${bench.toFixed(2)}</div>
     </div>`;
   }).join('');
