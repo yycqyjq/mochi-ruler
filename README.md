@@ -5,7 +5,8 @@
 ## 启动
 
 ```bash
-cd 墨尺
+git clone https://github.com/yycqyjq/mochi-ruler.git
+cd mochi-ruler
 python3 server.py            # 默认 http://127.0.0.1:8765
 python3 server.py 9000       # 指定端口
 ```
@@ -129,7 +130,7 @@ python3 server.py 9000       # 指定端口
 ## 文件
 
 ```
-墨尺/
+mochi-ruler/
 ├── server.py             后端（零依赖 HTTP 服务）
 ├── qc_core.py            核心库（指标 / 评分 / 匿名标杆基准）
 ├── .gitignore            忽略本地笔记与构建产物
