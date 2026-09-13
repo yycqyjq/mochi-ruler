@@ -149,18 +149,38 @@ function renderScores(d) {
   }).join('');
 }
 
+// 每个维度覆盖哪些展示指标 —— 与 qc_core 各维权重表一一对应。
+// 前端必须内置一份：接口若没带 dimitems（旧版后端 / 字段缺失），
+// 筛选会退化成「选了等于没选」的静默空操作。
+const DIM_ITEMS_FALLBACK = {
+  real: ['vague', 'nego', 'dash', 'rev', 'enum', 'simile', 'sent_den',
+         'para_med', 'dede', 'isde', 'onomat', 'space', 'short_run',
+         'tail', 'bold'],
+  human: ['emo', 'net_oral', 'exclaim', 'redupl'],
+  imm: ['imm_cog', 'imm_perc', 'breath'],
+  rhy: ['sent_p90', 'sent_p10', 'comma_in', 'lit'],
+  syn: ['pron3', 'pron_start', 'sent_med'],
+};
+
+// 后端带的 dimitems 直接取自权重表，是权威值；缺失或为空就用前端兜底。
+function dimItemsOf(d) {
+  return (d && d.dimitems && Object.keys(d.dimitems).length)
+    ? d.dimitems : DIM_ITEMS_FALLBACK;
+}
+
 // 逐项对比：每项一个 0–10 分，越高越好，不需要方向表。
 // 悬停指标名可见该指标的原始值。选中维度时只显示这些维度覆盖的指标；
 // 不属于任何维度的指标（如对话占比，只喂给不展示的「网文味」）始终保留，
 // 否则一筛选就再也看不到了。
 function renderMetrics(d) {
   const s = d.summary;
-  const covered = new Set(d.dims.flatMap(k => (d.dimitems && d.dimitems[k]) || []));
+  const dimitems = dimItemsOf(d);
+  const covered = new Set(d.dims.flatMap(k => dimitems[k] || []));
   const orphans = d.items.filter(k => !covered.has(k));
   let keys = d.items;
   const active = d.dims.filter(k => dimSel.has(k));
   if (active.length) {
-    const allow = new Set(active.flatMap(k => (d.dimitems && d.dimitems[k]) || []));
+    const allow = new Set(active.flatMap(k => dimitems[k] || []));
     keys = d.items.filter(k => allow.has(k) || orphans.includes(k));
   }
   $('#mcount').textContent = active.length
