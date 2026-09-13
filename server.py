@@ -105,7 +105,7 @@ def analyze(text, name=''):
     summary['metrics'] = {k: med([c['metrics'][k] for c in out]) for k in SHOW}
     summary['items'] = {k: med([c['items'][k] for c in out]) for k in SHOW}
 
-    # 标杆基准（7 本中位，口径与上面一致）。真人感 = 10 − 旧「AI 味」。
+    # 标杆基准（预置基准中位，口径与上面一致）。真人感 = 10 − 旧「AI 味」。
     bench = {
         'real': 10 - med([q.BENCHMARKS[b]['ai'] for b in q.BENCHMARKS]),
         'human': med([q.BENCHMARKS[b]['human'] for b in q.BENCHMARKS]),
