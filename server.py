@@ -37,8 +37,8 @@ SHOW = [
     'emo', 'net_oral', 'net_dial', 'exclaim', 'redupl',
     # 代入感（5）
     'imm_cog', 'imm_perc', 'imm_soma', 'imm_lim', 'breath',
-    # 句法（3）
-    'pron3', 'pron_start', 'sent_med',
+    # 句法（4）
+    'pron3', 'pron_start', 'sent_med', 'g_turn',
 ]
 
 # 逐项指标的中文名（只保留展示的 SHOW 项）。五维的中文名见 DIM_LABEL。
@@ -131,8 +131,13 @@ def analyze(text, name=''):
         'syn': med([q.BENCHMARKS[b]['syn'] for b in q.BENCHMARKS]),
     }
     bench['total'] = q.score_total(bench)
-    bench['metrics'] = {k: med([q.BENCHMARKS[b].get(k, 0) for b in q.BENCHMARKS])
-                        for k in SHOW}
+    # 新增指标在冻结基准里没有存值（基准是一次性算定的，不能就地补），
+    # 这类键一律给 None 让前端显示「—」，而不是拿 0 冒充标杆原始值。
+    def _bmed(k):
+        vs = [q.BENCHMARKS[b][k] for b in q.BENCHMARKS if k in q.BENCHMARKS[b]]
+        return med(vs) if vs else None
+
+    bench['metrics'] = {k: _bmed(k) for k in SHOW}
     bi = {}
     for k in SHOW:
         vs = [q.item_score(k, q.BENCHMARKS[b].get(k)) for b in q.BENCHMARKS]
