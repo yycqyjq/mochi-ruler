@@ -40,6 +40,13 @@ _RAW.update({
 })
 LABEL = {k: _RAW[k] for k in SHOW if k in _RAW}
 
+# 每个维度覆盖哪些展示指标，直接取自该维的权重表 —— 打分口径一变，
+# 这里的筛选范围自动跟着变，不需要另维护一份清单。
+DIM_ITEM_SRC = {'real': q.WEIGHTS, 'human': q.HUMAN_WEIGHTS,
+                'imm': q.IMM_WEIGHTS, 'rhy': q.RHY_WEIGHTS,
+                'syn': q.SYN_WEIGHTS}
+DIM_ITEMS = {k: [m for m in SHOW if m in w] for k, w in DIM_ITEM_SRC.items()}
+
 # 展示用分数：五维 + 总分。全部 0–10、越高越好。
 DIMS = ['real', 'human', 'imm', 'rhy', 'syn']
 DIM_LABEL = {'total': '总分', 'real': '真人感', 'human': '人味',
@@ -131,6 +138,7 @@ def analyze(text, name=''):
         'dimlabel': DIM_LABEL,
         'items': SHOW,
         'label': LABEL,
+        'dimitems': DIM_ITEMS,
         'chapters': out,
     })
 

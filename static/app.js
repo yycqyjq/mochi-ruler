@@ -53,6 +53,8 @@ let LAST = null;
 let loadedText = null;
 let loadedFolder = '';
 let loadedMeta = null;
+// 选中的维度（用于筛选下方逐项对比）；空集 = 显示全部。
+let dimSel = new Set();
 
 let toastTimer = null;
 function popup(title, body, type = '') {
@@ -125,6 +127,62 @@ function num(v, n = 1) {
   return (v === null || v === undefined) ? '—' : v.toFixed(n);
 }
 
+// 五维分数卡：可点击选中 / 取消选中，用于筛选下方逐项对比。
+function renderScores(d) {
+  const s = d.summary;
+  $('#scores').innerHTML = d.dims.map(k => {
+    const v = s[k], bench = d.bench[k];
+    const pct = Math.max(2, Math.min(100, v * 10));
+    const bmark = Math.max(0, Math.min(100, bench * 10));
+    const cls = scCls(v);
+    const sel = dimSel.has(k);
+    return `<div class="sc${sel ? ' sel' : ''}" data-dim="${k}"
+        title="点击只看该维度的逐项对比，再点一次取消">
+      <div class="k">${d.dimlabel[k]}</div>
+      <div class="v ${cls}">${v.toFixed(2)}</div>
+      <div class="bar" title="你 ${v.toFixed(2)}　标杆 ${bench.toFixed(2)}">
+        <i style="width:${pct}%;background:var(--${cls})"></i>
+        <span class="mark" style="left:${bmark}%"></span>
+      </div>
+      <div class="t">标杆 ${bench.toFixed(2)}</div>
+    </div>`;
+  }).join('');
+}
+
+// 逐项对比：每项一个 0–10 分，越高越好，不需要方向表。
+// 悬停指标名可见该指标的原始值。选中维度时只显示这些维度覆盖的指标；
+// 不属于任何维度的指标（如对话占比，只喂给不展示的「网文味」）始终保留，
+// 否则一筛选就再也看不到了。
+function renderMetrics(d) {
+  const s = d.summary;
+  const covered = new Set(d.dims.flatMap(k => (d.dimitems && d.dimitems[k]) || []));
+  const orphans = d.items.filter(k => !covered.has(k));
+  let keys = d.items;
+  const active = d.dims.filter(k => dimSel.has(k));
+  if (active.length) {
+    const allow = new Set(active.flatMap(k => (d.dimitems && d.dimitems[k]) || []));
+    keys = d.items.filter(k => allow.has(k) || orphans.includes(k));
+  }
+  $('#mcount').textContent = active.length
+    ? `（${keys.length} / ${d.items.length} 项 · 只显示选中维度${orphans.length ? '，含通用项' : ''}）`
+    : `（${keys.length} 项 · 满分 10，越高越好）`;
+  let rows = '<div class="mrow head"><div class="n">指标</div>' +
+    '<div class="you">你的分</div><div class="bench">标杆</div><div class="tag">判定</div></div>';
+  for (const k of keys) {
+    const you = s.items[k], bench = d.bench.items[k];
+    const raw = s.metrics[k], rawB = d.bench.metrics[k];
+    const j = itemTag(you, bench);
+    const cls = (you === null || you === undefined) ? '' : scCls(you);
+    rows += `<div class="mrow ${j.cls}">
+      <div class="n" title="原始值　你 ${fmt(raw)}　标杆 ${fmt(rawB)}">${d.label[k]}</div>
+      <div class="you ${cls}">${num(you)}</div>
+      <div class="bench">${num(bench)}</div>
+      <div class="tag">${j.tag}</div>
+    </div>`;
+  }
+  $('#metrics').innerHTML = rows;
+}
+
 function render(d) {
   $('#empty').hidden = true;
   $('#result').hidden = false;
@@ -157,42 +215,8 @@ function render(d) {
       </div>
     </div>`;
 
-  // 五维分数卡，全部 0–10、越高越好；条上竖线标基准位置。
-  $('#scores').innerHTML = d.dims.map(k => {
-    const v = s[k], bench = d.bench[k];
-    const pct = Math.max(2, Math.min(100, v * 10));
-    const bmark = Math.max(0, Math.min(100, bench * 10));
-    const cls = scCls(v);
-    return `<div class="sc">
-      <div class="k">${d.dimlabel[k]}</div>
-      <div class="v ${cls}">${v.toFixed(2)}</div>
-      <div class="bar" title="你 ${v.toFixed(2)}　标杆 ${bench.toFixed(2)}">
-        <i style="width:${pct}%;background:var(--${cls})"></i>
-        <span class="mark" style="left:${bmark}%"></span>
-      </div>
-      <div class="t">标杆 ${bench.toFixed(2)}</div>
-    </div>`;
-  }).join('');
-
-  // 逐项对比：每项一个 0–10 分，越高越好，不需要方向表。
-  // 悬停指标名可见该指标的原始值。
-  const keys = d.items;
-  $('#mcount').textContent = `（${keys.length} 项 · 满分 10，越高越好）`;
-  let rows = '<div class="mrow head"><div class="n">指标</div>' +
-    '<div class="you">你的分</div><div class="bench">标杆</div><div class="tag">判定</div></div>';
-  for (const k of keys) {
-    const you = s.items[k], bench = d.bench.items[k];
-    const raw = s.metrics[k], rawB = d.bench.metrics[k];
-    const j = itemTag(you, bench);
-    const cls = (you === null || you === undefined) ? '' : scCls(you);
-    rows += `<div class="mrow ${j.cls}">
-      <div class="n" title="原始值　你 ${fmt(raw)}　标杆 ${fmt(rawB)}">${d.label[k]}</div>
-      <div class="you ${cls}">${num(you)}</div>
-      <div class="bench">${num(bench)}</div>
-      <div class="tag">${j.tag}</div>
-    </div>`;
-  }
-  $('#metrics').innerHTML = rows;
+  renderScores(d);
+  renderMetrics(d);
 
   $('#chtitle').textContent = `逐章（${d.chapters.length}）`;
   let ch = '<div class="crow head"><div class="t">章</div>' +
@@ -432,6 +456,15 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#theme').onclick = theme;
   $('#source-remove').onclick = removeSource;
   $('#run').onclick = run;
+  // 点维度卡切换选中；选中后逐项对比只显示这些维度覆盖的指标。
+  $('#scores').addEventListener('click', e => {
+    const el = e.target.closest('.sc[data-dim]');
+    if (!el || !LAST) return;
+    const k = el.dataset.dim;
+    if (dimSel.has(k)) dimSel.delete(k); else dimSel.add(k);
+    renderScores(LAST);
+    renderMetrics(LAST);
+  });
   $('#demo').onclick = () => { loadedText = null; loadedFolder = ''; loadedMeta = null; $('#sourcebar').hidden = true; $('#text').value = DEMO; };
   $('#clear').onclick = () => {
     loadedText = null; loadedFolder = ''; loadedMeta = null; $('#sourcebar').hidden = true;
