@@ -154,11 +154,11 @@ function renderScores(d) {
 // 筛选会退化成「选了等于没选」的静默空操作。
 const DIM_ITEMS_FALLBACK = {
   real: ['vague', 'nego', 'dash', 'rev', 'enum', 'simile', 'sent_den',
-    'para_med', 'dede', 'isde', 'onomat', 'space', 'short_run',
-    'tail', 'bold'],
+    'para_med', 'short_run', 'tail', 'bold', 'dede', 'isde', 'onomat',
+    'space', 'short', 'head', 'tell', 'cv'],
   human: ['emo', 'net_oral', 'net_dial', 'exclaim', 'redupl'],
-  imm: ['imm_cog', 'imm_perc', 'breath'],
-  rhy: ['sent_p90', 'sent_p10', 'comma_in', 'lit'],
+  imm: ['imm_cog', 'imm_perc', 'imm_soma', 'imm_lim', 'breath'],
+  rhy: ['sent_p90', 'sent_p10', 'comma_in', 'lit', 'para_cv'],
   syn: ['pron3', 'pron_start', 'sent_med'],
 };
 

@@ -24,12 +24,22 @@ ROOT = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(ROOT, 'static')
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
 
-SHOW = ['vague', 'nego', 'dash', 'rev', 'enum', 'simile', 'sent_den', 'para_med',
-        'sent_p90', 'sent_p10', 'comma_in', 'lit', 'emo', 'imm_cog', 'imm_perc',
-        'net_oral', 'exclaim', 'redupl',
-        'pron3', 'pron_start', 'sent_med',
-        'dede', 'isde', 'onomat', 'space', 'breath', 'short_run', 'tail',
-        'net_dial', 'bold']
+# 按维度分组，组内顺序即展示顺序。这里只决定「展示哪些、按什么次序」，
+# 不参与打分——权重与阈值一律以 qc_core 各维权重表为准。
+SHOW = [
+    # 真人感（19）
+    'vague', 'nego', 'dash', 'rev', 'enum', 'simile', 'sent_den', 'para_med',
+    'short_run', 'tail', 'bold', 'dede', 'isde', 'onomat', 'space',
+    'short', 'head', 'tell', 'cv',
+    # 节奏（5）
+    'sent_p90', 'sent_p10', 'comma_in', 'lit', 'para_cv',
+    # 人味（5）
+    'emo', 'net_oral', 'net_dial', 'exclaim', 'redupl',
+    # 代入感（5）
+    'imm_cog', 'imm_perc', 'imm_soma', 'imm_lim', 'breath',
+    # 句法（3）
+    'pron3', 'pron_start', 'sent_med',
+]
 
 # 逐项指标的中文名（只保留展示的 SHOW 项）。五维的中文名见 DIM_LABEL。
 _RAW = dict(q.BENCH_LABEL)
