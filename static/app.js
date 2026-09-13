@@ -133,15 +133,37 @@ function render(d) {
   $('#meta').textContent =
     `${s.chapters} 章　·　${s.chars.toLocaleString()} 字`;
 
-  // 分数卡：总分 + 五维，全部 0–10、越高越好。
-  const cards = [['total', '总分', '五维等权平均'],
-    ...d.dims.map(k => [k, d.dimlabel[k], '越高越好'])];
-  $('#scores').innerHTML = cards.map(([k, name, tip]) => {
+  // 总分单独成卡：先给结论，再往下看五维与逐项。
+  const tv = s.total, tb = d.bench.total;
+  const tcls = scCls(tv), tj = itemTag(tv, tb);
+  const tpct = Math.max(0, Math.min(100, tv * 10));
+  const tbmark = Math.max(0, Math.min(100, tb * 10));
+  $('#totalcard').innerHTML = `
+    <div class="tc-head">
+      <span class="tc-label">总分</span>
+      <span class="tc-tip">五维等权平均</span>
+    </div>
+    <div class="tc-body">
+      <div class="tc-num ${tcls}">${tv.toFixed(2)}<span class="tc-max">/ 10</span></div>
+      <div class="tc-right">
+        <div class="tc-bar" title="你 ${tv.toFixed(2)}　标杆 ${tb.toFixed(2)}">
+          <i style="width:${tpct}%;background:var(--${tcls})"></i>
+          <span class="tc-mark" style="left:${tbmark}%"></span>
+        </div>
+        <div class="tc-foot">
+          <span>标杆 ${tb.toFixed(2)}　·　竖线为基准位置</span>
+          <span class="tc-tag ${tj.cls}">${tj.tag}</span>
+        </div>
+      </div>
+    </div>`;
+
+  // 五维分数卡，全部 0–10、越高越好。
+  $('#scores').innerHTML = d.dims.map(k => {
     const v = s[k], bench = d.bench[k];
     const pct = Math.max(2, Math.min(100, v * 10));
     const cls = scCls(v);
-    return `<div class="sc${k === 'total' ? ' total' : ''}">
-      <div class="k">${name} <span class="dim">${tip}</span></div>
+    return `<div class="sc">
+      <div class="k">${d.dimlabel[k]} <span class="dim">越高越好</span></div>
       <div class="v ${cls}">${v.toFixed(2)}</div>
       <div class="bar"><i style="width:${pct}%;background:var(--${cls})"></i></div>
       <div class="t">标杆 ${bench.toFixed(2)}</div>

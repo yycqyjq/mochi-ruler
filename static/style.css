@@ -143,11 +143,49 @@ textarea.on {
 
 .meta { font-size: 12px; color: var(--dim); margin-bottom: 14px; }
 
+/* 总分：独立大卡，先给结论 */
+.totalcard {
+  border: 1px solid var(--line); border-left: 3px solid var(--accent);
+  border-radius: var(--radius); background: var(--card);
+  padding: 13px 18px 14px; margin-bottom: 14px;
+}
+.tc-head { display: flex; align-items: baseline; gap: 10px; }
+.tc-label { font-size: 13px; font-weight: 700; letter-spacing: 1.5px; }
+.tc-tip { font-size: 11px; color: var(--dim); }
+.tc-body { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; margin-top: 3px; }
+.tc-num {
+  font-size: 42px; font-weight: 800; line-height: 1.05;
+  font-variant-numeric: tabular-nums; letter-spacing: -1px;
+}
+.tc-max { font-size: 13px; font-weight: 600; color: var(--dim); margin-left: 5px; letter-spacing: 0; }
+.tc-num.good { color: var(--good); }
+.tc-num.warn { color: var(--warn); }
+.tc-num.bad { color: var(--bad); }
+.tc-right { flex: 1; min-width: 200px; }
+.tc-bar { position: relative; height: 8px; border-radius: 4px; background: var(--line); }
+.tc-bar i { display: block; height: 100%; border-radius: 4px; }
+.tc-mark {
+  position: absolute; left: 0; top: -3px; width: 2px; height: 14px;
+  background: var(--fg); opacity: .5; border-radius: 1px;
+  transform: translateX(-1px);
+}
+.tc-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin-top: 7px; font-size: 11px; color: var(--dim);
+}
+.tc-tag {
+  flex: none; font-weight: 600; padding: 1px 9px;
+  border-radius: 999px; border: 1px solid currentColor;
+}
+.tc-tag.ok { color: var(--good); }
+.tc-tag.mid { color: var(--warn); }
+.tc-tag.no { color: var(--bad); }
+
+/* 五维 */
 .scores { display: grid; grid-template-columns: repeat(auto-fit, minmax(158px, 1fr)); gap: 12px; }
 .sc {
   border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px;
 }
-.sc.total { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 5%, transparent); }
 .sc .k { font-size: 12px; color: var(--dim); }
 .sc .v { font-size: 26px; font-weight: 700; line-height: 1.2; margin: 2px 0 6px; }
 .sc .bar { height: 5px; background: var(--line); border-radius: 3px; overflow: hidden; }
