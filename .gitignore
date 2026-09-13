@@ -1,0 +1,9 @@
+# 本地工作笔记：memory/ 记忆，notes/ 评测报告与草稿（不入库）
+.workbuddy/
+
+# Python 构建产物
+__pycache__/
+*.py[cod]
+
+# macOS
+.DS_Store
