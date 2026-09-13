@@ -44,13 +44,11 @@ qc_core.py — 网文「真人感 / 人味 / 代入感 / 节奏 / 句法」体�
     q.score_imm(m)[1]       # 代入感，0–10，越高越好
     q.score_rhy(m)[1]       # 节奏，0–10，越高越好
     q.score_syn(m)[1]       # 句法，0–10，越高越好
-    q.score_net(m)[1]       # 网文味，0–10，越高越好（不展示，仅供参考）
     q.score_total({...})    # 总分，0–10，越高越好
     q.compliance(body, title)   # 合规硬规则，返回违规项列表
     q.check(files)              # 达标验收，按 CHECK 门槛打印 PASS/FAIL
 
-另有两项参与计算但不在五维里展示：
-    网文味  越高越好（对话占比 / 口语 / 短句）
+另有一项独立机制（不在五维里）：
     合规    硬规则（圆括号注记 / 违禁元词 / 破折号超限 / 加粗 / 章内重复 /
             群像 / 章末抒情），命中即列为违规项
 
@@ -200,23 +198,20 @@ IMM_GOOD_BAD = {
 IMM_WEIGHTS = {"imm_perc": 0.10, "imm_cog": 0.40, "imm_soma": 0.10,
                "imm_lim": 0.15, "breath": 0.10}
 
-NET_GOOD_BAD = {
-    "net_dial":  (0.30, 0.15),
-    "net_oral":  (4.0, 1.5),
-    "net_short": (0.35, 0.15),
-}
-NET_WEIGHTS = {"net_dial": 0.35, "net_oral": 0.30, "net_short": 0.35}
-
 HUMAN_GOOD_BAD = {
     "net_oral": (1.20, 0.40),
+    "net_dial": (0.30, 0.15),
     "emo":      (2.00, 0.80),
     "exclaim":  (2.00, 0.20),
     "redupl":   (6.00, 2.00),
 }
 # `ttr`（词汇多样性）2026-09-13 起退出打分：实测真人长篇与 AI
 # 文本完全重叠，且有一篇 AI 的 ttr 是全体最高，不能当判据。权重按比例
-# 分给其余四项。
-HUMAN_WEIGHTS = {"net_oral": 0.22, "emo": 0.39,
+# 分给其余各项。
+# 「网文味」2026-09-13 起不再单列维度：它测的是文体特征而非缺陷，方向
+# 不成立。net_oral 本就在人味维，net_dial（对话占比）并入人味，
+# score_net 及其阈值表随之删除。
+HUMAN_WEIGHTS = {"net_oral": 0.22, "net_dial": 0.10, "emo": 0.39,
                  "exclaim": 0.22, "redupl": 0.17}
 
 RHY_GOOD_BAD = {
@@ -395,16 +390,12 @@ def good(v, target, over):
     return clamp((over - v) / (over - target) * 10)
 
 
-# 逐项评分规范：(达标值, 超标值)。由各维度阈值表合并而来；个别指标在维表里
-# 出现两次，这里显式指定以哪张为准，避免依赖合并顺序。
+# 逐项评分规范：(达标值, 超标值)。由各维度阈值表合并而来。
 ITEM_TARGET = {}
-for _tbl in (GOOD_BAD, IMM_GOOD_BAD, NET_GOOD_BAD, HUMAN_GOOD_BAD,
+for _tbl in (GOOD_BAD, IMM_GOOD_BAD, HUMAN_GOOD_BAD,
              RHY_GOOD_BAD, SYN_GOOD_BAD):
     ITEM_TARGET.update(_tbl)
 ITEM_TARGET["cv"] = CV_RANGE
-# net_oral（口语/千字）在「网文味」和「人味」两张表里刻度不同，
-# 逐项表取「人味」刻度——本工具的主线是「像不像真人」。
-ITEM_TARGET["net_oral"] = HUMAN_GOOD_BAD["net_oral"]
 # `act`（动作密度）与 `ttr`（词汇多样性）已退出打分，故此处不再给阈值；
 # 两个原始值仍由 metrics() 照常算出，供对照。
 
@@ -740,15 +731,9 @@ def score_imm(m):
     return s, _wavg(s, IMM_WEIGHTS)
 
 
-def score_net(m):
-    """网文味：0–10，越高越好。不展示，仅供参考（net_oral 用「网文味」刻度）。"""
-    s = {k: good(m[k], g, b) for k, (g, b) in NET_GOOD_BAD.items()}
-    return s, _wavg(s, NET_WEIGHTS)
-
-
 def score_human(m):
     """人味：0–10，越高越像真人。与真人感互补——真人感测「没有机器痕迹」，
-    人味测「有人的品质」（词汇丰富、口语、情绪）。低 AI 味 ≠ 有人味。
+    人味测「有人的品质」（口语、对话占比、情绪、叠词）。低 AI 味 ≠ 有人味。
     """
     s = {k: good(m[k], g, b) for k, (g, b) in HUMAN_GOOD_BAD.items()}
     return s, _wavg(s, HUMAN_WEIGHTS)

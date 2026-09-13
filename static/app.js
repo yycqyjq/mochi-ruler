@@ -108,7 +108,7 @@ function fmt(v) {
 // 逐项判定：所有分数 0–10、越高越好，所以只需和标杆分比高低，不需要方向。
 function itemTag(you, bench) {
   if (you === null || you === undefined ||
-      bench === null || bench === undefined) {
+    bench === null || bench === undefined) {
     return { tag: '—', cls: 'mid' };
   }
   const d = you - bench;
@@ -154,9 +154,9 @@ function renderScores(d) {
 // 筛选会退化成「选了等于没选」的静默空操作。
 const DIM_ITEMS_FALLBACK = {
   real: ['vague', 'nego', 'dash', 'rev', 'enum', 'simile', 'sent_den',
-         'para_med', 'dede', 'isde', 'onomat', 'space', 'short_run',
-         'tail', 'bold'],
-  human: ['emo', 'net_oral', 'exclaim', 'redupl'],
+    'para_med', 'dede', 'isde', 'onomat', 'space', 'short_run',
+    'tail', 'bold'],
+  human: ['emo', 'net_oral', 'net_dial', 'exclaim', 'redupl'],
   imm: ['imm_cog', 'imm_perc', 'breath'],
   rhy: ['sent_p90', 'sent_p10', 'comma_in', 'lit'],
   syn: ['pron3', 'pron_start', 'sent_med'],
@@ -170,7 +170,7 @@ function dimItemsOf(d) {
 
 // 逐项对比：每项一个 0–10 分，越高越好，不需要方向表。
 // 悬停指标名可见该指标的原始值。选中维度时只显示这些维度覆盖的指标；
-// 不属于任何维度的指标（如对话占比，只喂给不展示的「网文味」）始终保留，
+// 万一出现不属于任何维度的指标（无权重又不在筛选范围），始终保留，
 // 否则一筛选就再也看不到了。
 function renderMetrics(d) {
   const s = d.summary;
@@ -185,7 +185,7 @@ function renderMetrics(d) {
   }
   $('#mcount').textContent = active.length
     ? `（${keys.length} / ${d.items.length} 项 · 只显示选中维度${orphans.length ? '，含通用项' : ''}）`
-    : `（${keys.length} 项 · 满分 10，越高越好）`;
+    : `（${keys.length} 项 · 满分 10）`;
   let rows = '<div class="mrow head"><div class="n">指标</div>' +
     '<div class="you">你的分</div><div class="bench">标杆</div><div class="tag">判定</div></div>';
   for (const k of keys) {
@@ -362,7 +362,7 @@ function loadFiles(fs, sourceName = '', sourceKind = 'folder') {
         $('#hint').textContent = sourceName
           ? `已载入 ${list.length} 个文件；识别 ${chapterHint || '未分章'}；输入框内容会一起检测`
           : `已载入 ${list.length} 个文件；识别 ${chapterHint || '未分章'}` +
-            (skipped ? `（跳过 ${skipped} 个非文本文件）` : '');
+          (skipped ? `（跳过 ${skipped} 个非文本文件）` : '');
       }
     };
     rd.readAsText(f, 'utf-8');
