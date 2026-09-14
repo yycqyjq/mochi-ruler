@@ -5,13 +5,16 @@
 重建 `qc_core.BENCHMARKS`：24 本 × 全书等距 ≤100 章，只存原始指标中位。
 
 用法：
-    python3 tools/bench_build.py --corpus ~/Desktop/向死而生/标杆文章
+    python3 tools/bench_build.py --corpus <真人标杆语料目录>
     python3 tools/bench_build.py --corpus <目录> --out /tmp/newbench.txt
     python3 tools/bench_build.py --corpus <目录> --verify
 
     --corpus  真人标杆语料目录（.txt / .md / .markdown）
     --out     把 BENCHMARKS 字面量写到文件（默认只打印到 stdout）
     --verify  不产出，改为与当前 qc_core.BENCHMARKS 逐键比对并报告漂移
+    --show-fp 只打印语料目录里各文件的内容指纹
+
+不写死任何语料路径——语料在哪儿由使用者传参决定。
 
 为什么用「内容指纹」而不是文件名 / 排序位置来定代号
 --------------------------------------------------
@@ -21,7 +24,8 @@
 - **按文件名**：改名即失配，且等于把书目写进了仓库。
 - **按排序位置**（旧脚本的 `B{i:02d}`）：目录里新增一本书，其后全部错位。
   2026-09-14 实测：旧脚本的 `EXCLUDE` 只列了 2 本，实际剔除的是 5 本，
-  直接重跑会产出 `B01..B27`，**B02 之后全体位移**——`B02` 会从「仙逆」变成别的书。
+  直接重跑会产出 `B01..B27`，**B02 之后全体位移**——同一个代号会落到另一本书上，
+  整张表静默写坏，而分数看起来完全正常。
 - **按内容指纹**：改名、增删文件都不影响，也不暴露作品名。
 
 所以本脚本：
@@ -31,6 +35,9 @@
 
 改语料（换书 / 增删）时：先跑 `--verify` 看现状，再按需更新 `FINGERPRINTS`。
 指纹用 `--show-fp` 打印。
+
+其他工具（标定、排版扫描）需要「只保留基准登记的这 24 本」时，直接调
+`keep_known()`——同一份指纹表，别各写一份按书名筛的清单。
 """
 import argparse
 import glob
@@ -82,7 +89,19 @@ FINGERPRINTS = {
 }
 
 FP2CODE = {v: k for k, v in FINGERPRINTS.items()}
-KEYS = list(server.SHOW)          # 43 项，顺序即 BENCHMARKS 字面量里的键序
+KEYS = list(server.SHOW)          # 42 项，顺序即 BENCHMARKS 字面量里的键序
+
+
+def keep_known(paths):
+    """只留下 `FINGERPRINTS` 里登记过的文件，返回 (保留, 剔除)。
+
+    真人标杆目录里通常混着几本不可用的（拆不出章 / 疑似合章）。标定阈值、
+    扫排版噪声这些**依赖真人中位**的工具都必须先筛，否则 5 本坏书会把中位
+    算歪。**不要在别处另写一份按书名筛的清单**——那既会随书目变动失配，
+    也等于把作品名写进仓库（项目铁律：一律匿名）。
+    """
+    keep = [f for f in paths if fingerprint(f) in FP2CODE]
+    return keep, [f for f in paths if f not in set(keep)]
 
 
 def fingerprint(path):
