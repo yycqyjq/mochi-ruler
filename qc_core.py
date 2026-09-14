@@ -46,22 +46,23 @@ qc_core.py — 网文「真人感 / 人味 / 代入感 / 节奏 / 句法」体�
     q.score_syn(m)[1]       # 句法，0–10，越高越好
     q.score_total({...})    # 总分，0–10，越高越好
     q.compliance(body, title)   # 合规硬规则，返回违规项列表
-    q.check(files)              # 达标验收，按 CHECK 门槛打印 PASS/FAIL
 
 另有一项独立机制（不在五维里）：
     合规    硬规则（圆括号注记 / 违禁元词 / 破折号超限 / 加粗 / 章内重复 /
             群像 / 章末抒情），命中即列为违规项
 
-门槛（CHECK）：
-    达标线取自标杆中位数，供 check() 做 PASS/FAIL 门禁与「最该先改」排序。
+    判分约定：`good(v)` 在 v 为 None（该项在本章不适用，如无对话的章的
+    `dial_sent`）时返回 None，`_wavg()` 会跳过它并按剩余权重归一——
+    既不奖励也不惩罚。
 
 标杆基准（BENCHMARKS）：
     对中文长篇逐章统计得到：每本按全书均匀抽样（单章 ≥1200 字），
     先算各本中位，再取跨本中位。键名为匿名代号，具体书目不入库。
 
     2026-09-14 重建（旧的是 7 本、只取前 40 章，且其中一本是在错误拆章上
-    算出来的）：现为 **24 本 × 全书等距 100 章**，剔除了两本不可用的
-    （一本整本未拆出章节，一本章均近万字疑似合章）。
+    算出来的）：现为 **24 本 × 全书等距 100 章**，剔除了五本不可用的。
+    重建脚本：`tools/bench_build.py`（代号按**内容指纹**认领，不按文件名或
+    排序位置——目录里多一本书就会让位置式代号全体错位，静默写坏整张表）。
     更关键的是口径：**只存原始指标中位，不再存五维分**。
     旧的每个条目里存着 ai / human / imm / net / rhythm / syn 六个**字面量**，
     是用当时那套公式算的死数——公式一改（如 net 撤编、g_turn 入库）
@@ -71,7 +72,6 @@ qc_core.py — 网文「真人感 / 人味 / 代入感 / 节奏 / 句法」体�
 
 import re
 import statistics
-import collections
 
 
 # ---------------------------------------------------------------- 正则
@@ -83,8 +83,18 @@ SIMILE = re.compile(
     r"(?<![好不想图画偶影录相])像[^\s，。！？、]{1,8}"
 )
 DASH_END = re.compile(r"——[^，。！？\n]{1,14}[。！]")
-HEADWORD = re.compile(r"(?:^|[。！？…\n])([\u4e00-\u9fa5]{1,2})")
 
+# ⚠ `head`（句首集中）**已整体删除**（2026-09-14）。原正则：
+#     (?:^|[。！？…\n])([\u4e00-\u9fa5]{1,2})
+# 它在「\n」分支后**直接**要求汉字，而真人标杆语料段首用全角空格缩进、
+# AI 语料不缩进 —— 于是真人侧的段首词一个都匹配不到，指标值被系统性压低。
+# 实测：真人 0.018 / AI 0.072，分离度 0.92 —— 这 0.92 **全是排版差，不是笔法差**：
+# 把正文里的全角空格剥掉后，分离度塌到 0.09（真人 0.076 / AI 0.072）。
+# 给正则补一个 `\s*` 就能修掉这个 bug，但修完就没有区分度了（0.09 < 0.7 门槛），
+# 故按「无区分度的项一律直接删除」处理：正则、原始值、阈值、权重、展示位、
+# 24 本基准键、中文名一并清掉。**若要复活，须先证明在去排版噪声后分离度 ≥0.7。**
+# 排版噪声扫描脚本：`tools/layout_scan.py`（铁律「格式噪声必须排除」的执行工具）。
+#
 # 第三人称代词。「其他」不是代词，用后顾断言排除；「她 / 它」无此搭配。
 PRON3 = re.compile(r"(?<!其)他|她|它")
 
@@ -173,7 +183,16 @@ TOUCH_TEMP = re.compile(r"凉|烫|暖|冰冷|发冷|发热|湿|干|粗糙|光滑
 DEM_LIT = re.compile(r"此|彼")
 
 EXCLAIM = re.compile(r"！")
-REDUPL = re.compile(r"(.)\1(?![一-龥])")
+# ⚠ 只认**汉字**成对（2026-09-14 修）。旧正则 `(.)\1(?![一-龥])` 有两处毛病：
+#   1. `.` 能匹配全角空格，而真人标杆语料段首用「　　」缩进、AI 语料不缩进——
+#      实测真人侧命中里 **63% 是全角空格对**（真人缩进密度 43.0/千字 / AI 0.00），
+#      等于在量排版而不是量叠词，违反铁律「格式噪声必须排除」；
+#   2. `(?![一-龥])` 要求叠字后**紧跟非汉字**，把「慢慢地 / 轻轻地 / 渐渐地」
+#      这类最常见的叠词全部漏掉（旧口径 9.4/千字 vs 朴素 (.)\1 31.1/千字）。
+# 修法：把成对字符限死在汉字区间内。修后真人 5.71 / AI 2.91（每千字），
+# 分离度 0.71、残差 0.72，仍在 0.7 门槛之上——**信号是真的，只是以前被排版噪声撑大了**。
+# 阈值与 24 本基准随本轮回标定。排版扫描脚本：`tools/layout_scan.py`。
+REDUPL = re.compile(r"([\u4e00-\u9fa5])\1")
 TELL = re.compile(r"他知道|她知道|他明白|她明白|他意识到|她意识到|"
                   r"他感到|她感到|他清楚|她清楚|他忽然明白")
 NEGO = re.compile(r"不是[^。！？\n]{1,22}——[^。！？\n]{1,22}")
@@ -181,20 +200,10 @@ ENUM = re.compile(
     r"有的[^，。！？]{1,12}[，、][^，。！？]{0,8}有的|"
     r"[^，。！？\n]{2,8}、[^，。！？\n]{2,8}、[^，。！？\n]{2,8}"
 )
-HOOK = re.compile(
-    r"突然|忽然|竟然|居然|没想到|不对|奇怪|异常|异样|第一次|从没|从来没|"
-    r"谁也没|没人|不知从哪|凭空|毫无预兆|"
-    r"不知|没说|没答|没有回答|沉默|没吭声|不语|"
-    r"原来|竟是|却是|谁知|"
-    r"死了|没了|毁了|塌了|碎了|消失|"
-    r"必须|只剩|来不及|明日|明天|三日内|期限|再不|"
-    r"\uff1f"
-)
-CONFLICT = re.compile(
-    r"打|杀|争|吵|威胁|危险|怒|骂|攻击|逃|追|怕|死|伤|血|"
-    r"刀|剑|枪|爆|崩|碎|吼|扑|撞|撕|抢|敌|斗|战|危机|险"
-)
-THINK = re.compile(r"([\u4e00-\u9fa5]{2,4})(?:心想|暗想|心里想|心中暗想|暗自|心道)")
+# `HOOK`（钩子词）/ `CONFLICT`（冲突词）/ `THINK`（心想句式）三个正则**已删除**
+# （2026-09-14）。它们属于已撤编的「网文味」维度，全库零引用——留着只会让
+# 「新增指标要同步几处」的清单虚高，也容易让人误以为还有一条没接上的打分线。
+# 若要复活，走「加新指标」标准流程（须先证明分离度 ≥0.7）。
 VAGUE = re.compile(
     r"在心里|过了很久|很久|半晌|好一会儿|看了一会儿|看了很久|看了半天|"
     r"听了一会儿|一样东西|一件事|一句话|的时候|这个字|这两个字|三个字|"
@@ -210,7 +219,6 @@ GOOD_BAD = {
     "simile": (1.00, 2.50),
     "short":  (0.30, 0.45),
     "dash":   (0.50, 6.00),
-    "head":   (0.05, 0.12),
     "vague":    (0.80, 3.00),
     "para_med": (26.0, 14.0),
     "short_run": (3.0, 6.0),
@@ -230,12 +238,11 @@ CV_RANGE = (0.60, 0.42)
 # 权重只需表达「相对重要性」，不必凑成 1.0 —— 各 score_* 用 _wavg() 做归一化。
 WEIGHTS = {
     "rev": 0.10, "tail": 0.05, "bold": 0.04, "cv": 0.05,
-    "simile": 0.06, "short": 0.02, "dash": 0.08, "head": 0.02,
+    "simile": 0.06, "short": 0.02, "dash": 0.08,
     "vague": 0.10, "para_med": 0.04, "short_run": 0.02,
     "tell": 0.02, "nego": 0.10, "enum": 0.04, "sent_den": 0.10,
     "dede": 0.03, "isde": 0.03, "onomat": 0.02, "space": 0.02,
-    # dem_lit 权重 0.06：分离度 0.87→去掉「该」后 0.85，在真人感 20 项里排第 7，
-    # 与 sep 0.91 的 simile 同档（0.06）。
+    # dem_lit 权重 0.06：分离度 0.87→去掉「该」后 0.85，与 sep 0.91 的 simile 同档。
     "dem_lit": 0.06,
 }
 
@@ -302,8 +309,13 @@ HUMAN_GOOD_BAD = {
     # 降 exclaim 后）：1.0→标杆 7.90（水位塌）、0.85→8.66（与 imm 8.64 /
     # rhy 8.71 同档，取此档）、0.55→9.43（仍饱和）、旧线→9.54。
     # 真人跨本中位 / AI 中位（129 块口径）：emo 3.93/1.62 · net_oral 1.75/0.47 ·
-    # exclaim 2.85/0.00 · redupl 10.22/2.47 · question 11.17/3.81。
-    # 注意 exclaim 风格脆弱（B13/B14/B18 三本真人书感叹号≈0）的问题由
+    # exclaim 2.85/0.00 · question 11.17/3.81。
+    # ⚠ 这四项的「真人跨本中位」用 2026-09-14 的工具复现不出来（实测 emo 4.04 /
+    # net_oral 1.58 / exclaim 3.23 / question 10.82，与记录差 3%–13%），它们的
+    # AI 中位却能逐位复现——说明 AI 口径没错，是真人侧那一轮之后语料/正则又动过。
+    # **本轮不动它们**（改了会连带改动整个真人感的分数水位），但记在这里：
+    # 下次整轮回标定时，这四项的真人中位要一并重算。
+    # 注 exclaim 风格脆弱（B13/B14/B18 三本真人书感叹号≈0）的问题由
     # **降权**处理（见 HUMAN_WEIGHTS 注），达标线仍按统一公式走。
     "net_oral": (1.56, 0.47),
     # 对话句长（2026-09-14 由 net_dial「对话占比」换口径而来，旧项退役）。
@@ -314,7 +326,16 @@ HUMAN_GOOD_BAD = {
     "dial_sent": (15.4835, 7.1973),
     "emo":      (3.58, 1.62),
     "exclaim":  (2.42, 0.00),
-    "redupl":   (9.06, 2.47),
+    # 叠词（2026-09-14 随 REDUPL 正则一起重标定）。旧正则 `(.)\1(?![一-龥])`
+    # 把全角空格对也算成叠词，真人标杆语料段首缩进「　　」使它虚高——旧线
+    # (9.06, 2.47) 是拿被排版噪声撑大的真人中位 10.22 定的。
+    # 改正则后（只认汉字成对）同一批语料：真人跨本真中位 6.047 / AI 中位 2.911
+    # （24 本 × 全书等距 100 章；AI 组 129 块三目录口径，与上面四项同组，
+    # 这样 2.47→2.911 的差可以完全归因于正则改动）。
+    # k=0.85 公式：达标 = 2.911 + 0.85×(6.047−2.911) ≈ 5.577。
+    # 分离度 0.70 / 残差 0.71（旧口径 0.79/0.79）——信号是真的，只是以前被
+    # 排版噪声撑大了；0.70 仍站在门槛线上。复现命令见 tools/calibrate.py。
+    "redupl":   (5.577, 2.911),
     "question": (10.07, 3.81),
     # 情绪词种类数/百句（2026-09-14 入库）。真人中位 5.74 / AI 中位 0.9195
     # （AI 组扩容 185 块口径，新增放学别走/最后一单两目录），k=0.85 公式：
@@ -389,140 +410,80 @@ SYN_GOOD_BAD = {
 SYN_WEIGHTS = {"pron3": 0.45, "pron_start": 0.30, "sent_med": 0.25,
                "g_turn": 0.30, "conn_lit": 0.30}
 
-CHECK = [
-    # (指标, 方向, 达标线, 中文名, 说明)　方向 min = 越高越好，max = 越低越好
-    ("rev", "max", 0.30, "反转句/千字", "不是A，是B"),
-    ("simile", "max", 1.00, "明喻/千字", "像…一样"),
-    ("bold", "max", 0.0, "正文加粗", "小说正文不该有"),
-    ("dash", "max", 0.50, "破折号收束/千字", "——短句。"),
-    ("vague", "max", 0.80, "AI模糊语/千字", "在心里/过了很久/的时候"),
-    ("nego", "max", 0.10, "否定-破折号/千字", "不是A——是B"),
-    ("enum", "max", 0.20, "罗列排比/千字", "顿号三连"),
-    ("sent_den", "max", 35.0, "句/千字", "句子切太碎"),
-    ("para_med", "min", 26.0, "段长中位", "段落太碎"),
-    ("sent_p90", "min", 60.0, "长句p90", "写不出长句"),
-    ("real", "min", 8.50, "真人感(分)", "0–10，越高越不像AI"),
-    ("human", "min", 6.00, "人味(分)", "口语/情绪/叠词"),
-    ("imm", "min", 5.00, "代入感(分)", "感知/认知/身体/意外"),
-    ("rhythm", "min", 7.00, "节奏(分)", "长短句张力"),
-    ("syn", "min", 7.00, "句法(分)", "代词密度/起句/句长/连接词"),
-    ("total", "min", 7.50, "总分(分)", "五维等权"),
-]
-
-
-def check(files):
-    """达标验收：达标线取自预置基准的中位数。输出逐章通过率与全书判定。"""
-    rows = []
-    for f in files:
-        t = open(f, encoding="utf-8").read()
-        for title, body in split_chapters(t):
-            if len(re.sub(r"\s", "", body)) < 1200:
-                continue
-            rows.append((title, body))
-    if not rows:
-        print("未找到足够章节（需 >=1200 字）")
-        return
-
-    vals = []
-    for title, body in rows:
-        m = metrics(body)
-        m["real"] = score_real(m)[1]
-        m["human"] = score_human(m)[1]
-        m["imm"] = score_imm(m)[1]
-        m["rhythm"] = score_rhy(m)[1]
-        m["total"] = score_total({k: m[k] for k in DIM_WEIGHTS})
-        vals.append((title, m))
-
-    def med(k):
-        v = sorted(x[1][k] for x in vals)
-        return v[len(v) // 2]
-
-    print()
-    print("=" * 72)
-    print("达标验收（达标线取自预置基准中位数）")
-    print("=" * 72)
-    print(f"{'指标':<18}{'达标线':>10}{'你的值':>10}{'逐章通过':>10}   判定")
-    print("-" * 72)
-    passed = 0
-    gaps = []
-    for k, direction, line, label, note in CHECK:
-        v = med(k)
-        ok_ch = sum(1 for _, m in vals
-                    if (m[k] <= line if direction == "max" else m[k] >= line))
-        ok = (v <= line) if direction == "max" else (v >= line)
-        sym = ("≤" if direction == "max" else "≥")
-        verdict = "PASS" if ok else "FAIL"
-        if ok:
-            passed += 1
-        else:
-            gap = (v - line) if direction == "max" else (line - v)
-            gaps.append((gap / max(abs(line), 1e-6), label, v, line, sym))
-        print(f"{label:<18}{sym + format(line, '.2f'):>10}{v:>10.2f}"
-              f"{str(ok_ch) + '/' + str(len(vals)):>10}   {verdict}")
-    print("-" * 72)
-    print(f"通过 {passed}/{len(CHECK)} 项")
-    if gaps:
-        gaps.sort(reverse=True)
-        print("\n最该先改的 3 项（按差距排序）：")
-        for r, label, v, line, sym in gaps[:3]:
-            print(f"   {label:<18} 现 {v:.2f} → 目标 {sym}{line:.2f}"
-                  f"（还差 {r*100:.0f}%）")
-    else:
-        print("全部达标。")
-    print()
+# ⚠ `CHECK`（达标门槛表）与 `check()`（CLI 达标验收）**已整体删除**（2026-09-14）。
+# 删除理由，三条：
+#   1. `check()` 全库零调用者——服务端 `server.analyze` 已经给出五维 + 总分 +
+#      逐项分 + 基准对照，能力完全覆盖；
+#   2. 它的 `CHECK` 达标线是**手写字面量**（real 8.50 / human 6.00 / imm 5.00 /
+#      rhythm 7.00 / syn 7.00 / total 7.50），却对外声称「达标线取自预置基准的
+#      中位数」——而当前 24 本基准是 9.57 / 8.51 / 8.68 / 8.71 / 8.98 / 8.89，
+#      全部对不上，是 7 本时代的遗物；
+#   3. 它调用 `score_total({k: m[k] for k in DIM_WEIGHTS})`，但只写了
+#      `m["rhythm"]` 而 DIM_WEIGHTS 的键是 `rhy` / `syn`——**一调用就
+#      `KeyError: 'rhy'`**，且它的章节门槛 1200 字与全库 300 字不一致。
+# 结论：修它等于维护一张错的手写阈值表 + 两套章节门槛；**别修一个错的东西**。
+# 若将来确实要 CLI 门禁，另写 `tools/check.py`，达标线运行时从 `BENCHMARKS` 算。
 
 
 BENCHMARKS = {
-    # 键名为匿名代号，具体书目不入库。字段只有原始指标中位 + 抽样章数 _n，
-    # 五维分不存（运行时算），新增指标自动获得基准。
-    "B01": {'_n': 100, 'vague': 0.3693, 'nego': 0.0, 'dash': 0.0, 'rev': 0.3287, 'enum': 0.0, 'simile': 0.7452, 'sent_den': 23.7371, 'para_med': 58.0, 'short_run': 1.0, 'tail': 0.0235, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 4.6035, 'short': 0.063, 'head': 0.0161, 'tell': 0.0, 'cv': 0.6888, 'sent_p90': 79.5, 'sent_p10': 6.0, 'comma_in': 88.8797, 'lit': 15.1581, 'para_cv': 0.5025, 'emo': 4.7988, 'net_oral': 1.098, 'exclaim': 6.8249, 'redupl': 8.9121, 'imm_cog': 1.1527, 'imm_perc': 2.3422, 'imm_soma': 2.3063, 'breath': 0.3752, 'pron3': 9.9561, 'pron_start': 0.0216, 'sent_med': 39.5, 'g_turn': 1.7716, 'surprise': 0.7593, 'conn_lit': 0.7115, 'touch_temp': 0.3513, 'question': 2.1055, 'emo_type': 8.4507, 'dial_sent': 18.8459},
-    "B02": {'_n': 100, 'vague': 0.3272, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.0, 'simile': 0.6368, 'sent_den': 23.4577, 'para_med': 52.0, 'short_run': 1.0, 'tail': 0.0318, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 5.0279, 'short': 0.0305, 'head': 0.0152, 'tell': 0.0, 'cv': 0.5911, 'sent_p90': 75.0, 'sent_p10': 11.0, 'comma_in': 86.6435, 'lit': 23.7106, 'para_cv': 0.466, 'emo': 3.4402, 'net_oral': 0.327, 'exclaim': 7.7759, 'redupl': 5.4817, 'imm_cog': 0.8955, 'imm_perc': 1.3042, 'imm_soma': 2.5016, 'breath': 0.0, 'pron3': 8.8675, 'pron_start': 0.0323, 'sent_med': 40.0, 'g_turn': 3.1757, 'surprise': 0.3294, 'conn_lit': 3.1361, 'touch_temp': 0.3245, 'question': 0.0, 'emo_type': 6.8969, 'dial_sent': 20.025},
-    "B03": {'_n': 100, 'vague': 0.8694, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.3285, 'simile': 0.4946, 'sent_den': 45.9316, 'para_med': 27.75, 'short_run': 3.0, 'tail': 0.0674, 'bold': 0.0, 'dede': 0.0, 'isde': 0.4516, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 0.4803, 'short': 0.1567, 'head': 0.0158, 'tell': 0.0, 'cv': 0.6386, 'sent_p90': 39.0, 'sent_p10': 6.0, 'comma_in': 47.8602, 'lit': 8.9436, 'para_cv': 0.6639, 'emo': 2.4065, 'net_oral': 3.2658, 'exclaim': 2.8531, 'redupl': 13.2252, 'imm_cog': 0.3834, 'imm_perc': 0.9405, 'imm_soma': 1.6295, 'breath': 0.0, 'pron3': 10.9577, 'pron_start': 0.0317, 'sent_med': 18.0, 'g_turn': 1.6464, 'surprise': 0.329, 'conn_lit': 1.3661, 'touch_temp': 0.4785, 'question': 14.8332, 'emo_type': 3.0458, 'dial_sent': 10.8838},
-    "B04": {'_n': 100, 'vague': 0.6527, 'nego': 0.0, 'dash': 0.0, 'rev': 0.3244, 'enum': 0.0, 'simile': 0.6342, 'sent_den': 38.2628, 'para_med': 44.5, 'short_run': 2.0, 'tail': 0.0374, 'bold': 0.0, 'dede': 0.0, 'isde': 0.948, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 1.9087, 'short': 0.1293, 'head': 0.025, 'tell': 0.0, 'cv': 0.7163, 'sent_p90': 49.0, 'sent_p10': 5.0, 'comma_in': 49.5629, 'lit': 8.8642, 'para_cv': 0.7578, 'emo': 5.3834, 'net_oral': 4.4325, 'exclaim': 4.2335, 'redupl': 13.201, 'imm_cog': 0.9494, 'imm_perc': 1.8586, 'imm_soma': 1.2563, 'breath': 0.0, 'pron3': 8.4827, 'pron_start': 0.0216, 'sent_med': 22.0, 'g_turn': 4.8387, 'surprise': 0.6383, 'conn_lit': 2.1158, 'touch_temp': 0.3226, 'question': 11.835, 'emo_type': 4.167, 'dial_sent': 10.5181},
-    "B05": {'_n': 100, 'vague': 0.7134, 'nego': 0.0, 'dash': 0.0, 'rev': 0.2558, 'enum': 0.0, 'simile': 0.7057, 'sent_den': 34.7395, 'para_med': 42.0, 'short_run': 1.0, 'tail': 0.0331, 'bold': 0.0, 'dede': 0.0, 'isde': 0.3747, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 6.1085, 'short': 0.0476, 'head': 0.0215, 'tell': 0.0, 'cv': 0.5834, 'sent_p90': 49.5, 'sent_p10': 9.0, 'comma_in': 54.0045, 'lit': 18.5989, 'para_cv': 0.5649, 'emo': 4.9957, 'net_oral': 1.8924, 'exclaim': 2.5762, 'redupl': 5.9587, 'imm_cog': 1.0372, 'imm_perc': 1.1226, 'imm_soma': 2.9343, 'breath': 0.0, 'pron3': 4.9262, 'pron_start': 0.0205, 'sent_med': 25.0, 'g_turn': 3.3059, 'surprise': 0.7407, 'conn_lit': 2.9608, 'touch_temp': 0.3674, 'question': 4.4544, 'emo_type': 5.6864, 'dial_sent': 16.564},
-    "B06": {'_n': 100, 'vague': 0.3202, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.324, 'simile': 0.9266, 'sent_den': 43.1542, 'para_med': 23.0, 'short_run': 3.0, 'tail': 0.0611, 'bold': 0.0, 'dede': 0.0, 'isde': 0.6367, 'onomat': 0.1401, 'space': 0.0, 'dem_lit': 0.6387, 'short': 0.3031, 'head': 0.0153, 'tell': 0.0, 'cv': 0.8617, 'sent_p90': 47.0, 'sent_p10': 4.0, 'comma_in': 52.1946, 'lit': 14.7795, 'para_cv': 0.9057, 'emo': 4.2324, 'net_oral': 1.5639, 'exclaim': 7.173, 'redupl': 17.0432, 'imm_cog': 0.8973, 'imm_perc': 0.9707, 'imm_soma': 1.5718, 'breath': 0.0, 'pron3': 4.9099, 'pron_start': 0.0123, 'sent_med': 16.25, 'g_turn': 2.9897, 'surprise': 0.6392, 'conn_lit': 0.3271, 'touch_temp': 0.0, 'question': 7.5171, 'emo_type': 3.6631, 'dial_sent': 13.9847},
-    "B07": {'_n': 100, 'vague': 1.1257, 'nego': 0.0, 'dash': 0.0, 'rev': 0.3156, 'enum': 0.0, 'simile': 1.0912, 'sent_den': 33.4877, 'para_med': 36.5, 'short_run': 2.0, 'tail': 0.0437, 'bold': 0.0, 'dede': 0.0, 'isde': 2.1267, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 0.7875, 'short': 0.1034, 'head': 0.0142, 'tell': 0.0, 'cv': 0.6877, 'sent_p90': 54.5, 'sent_p10': 7.0, 'comma_in': 64.4551, 'lit': 8.0349, 'para_cv': 0.6365, 'emo': 2.7983, 'net_oral': 2.6107, 'exclaim': 0.3544, 'redupl': 8.9494, 'imm_cog': 0.4395, 'imm_perc': 0.8318, 'imm_soma': 1.0291, 'breath': 0.0, 'pron3': 4.7915, 'pron_start': 0.019, 'sent_med': 24.25, 'g_turn': 1.2331, 'surprise': 0.0, 'conn_lit': 2.3124, 'touch_temp': 0.4824, 'question': 9.0398, 'emo_type': 3.4483, 'dial_sent': 17.086},
-    "B08": {'_n': 100, 'vague': 0.2214, 'nego': 0.0, 'dash': 0.0, 'rev': 0.2783, 'enum': 0.2844, 'simile': 1.2587, 'sent_den': 32.459, 'para_med': 38.0, 'short_run': 2.0, 'tail': 0.0455, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0692, 'onomat': 0.37, 'space': 0.0, 'dem_lit': 1.7537, 'short': 0.1126, 'head': 0.0096, 'tell': 0.0, 'cv': 0.5859, 'sent_p90': 50.0, 'sent_p10': 6.0, 'comma_in': 84.3975, 'lit': 11.175, 'para_cv': 0.5007, 'emo': 5.1224, 'net_oral': 1.8511, 'exclaim': 8.2394, 'redupl': 7.5925, 'imm_cog': 0.6127, 'imm_perc': 1.8636, 'imm_soma': 2.683, 'breath': 0.2143, 'pron3': 15.4425, 'pron_start': 0.0521, 'sent_med': 30.0, 'g_turn': 3.1844, 'surprise': 0.6633, 'conn_lit': 1.2593, 'touch_temp': 0.5772, 'question': 10.0149, 'emo_type': 5.8333, 'dial_sent': 18.9545},
-    "B09": {'_n': 100, 'vague': 1.476, 'nego': 0.0, 'dash': 0.0, 'rev': 0.4794, 'enum': 0.0, 'simile': 0.9749, 'sent_den': 27.1197, 'para_med': 40.25, 'short_run': 1.0, 'tail': 0.0233, 'bold': 0.0, 'dede': 0.0, 'isde': 0.4879, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 1.3722, 'short': 0.0632, 'head': 0.0189, 'tell': 0.0, 'cv': 0.6053, 'sent_p90': 65.0, 'sent_p10': 9.0, 'comma_in': 46.6757, 'lit': 12.3929, 'para_cv': 0.5496, 'emo': 4.2971, 'net_oral': 6.4229, 'exclaim': 5.6765, 'redupl': 8.1633, 'imm_cog': 2.9311, 'imm_perc': 2.1239, 'imm_soma': 1.4451, 'breath': 0.0, 'pron3': 9.9587, 'pron_start': 0.02, 'sent_med': 33.25, 'g_turn': 3.4014, 'surprise': 1.386, 'conn_lit': 1.9724, 'touch_temp': 0.4904, 'question': 21.0608, 'emo_type': 7.9474, 'dial_sent': 15.6932},
-    "B10": {'_n': 100, 'vague': 0.2603, 'nego': 0.0, 'dash': 0.0, 'rev': 0.2759, 'enum': 0.2768, 'simile': 1.2239, 'sent_den': 34.4775, 'para_med': 40.25, 'short_run': 1.0, 'tail': 0.0258, 'bold': 0.0, 'dede': 0.0, 'isde': 0.1493, 'onomat': 0.2655, 'space': 0.0, 'dem_lit': 2.3699, 'short': 0.0985, 'head': 0.0093, 'tell': 0.0, 'cv': 0.5975, 'sent_p90': 49.0, 'sent_p10': 5.0, 'comma_in': 85.4711, 'lit': 11.8242, 'para_cv': 0.4537, 'emo': 5.7233, 'net_oral': 1.8648, 'exclaim': 5.7572, 'redupl': 10.2168, 'imm_cog': 0.617, 'imm_perc': 1.3038, 'imm_soma': 2.3977, 'breath': 0.0, 'pron3': 12.0501, 'pron_start': 0.0387, 'sent_med': 29.0, 'g_turn': 2.8335, 'surprise': 0.6467, 'conn_lit': 1.4348, 'touch_temp': 0.4853, 'question': 9.392, 'emo_type': 5.2174, 'dial_sent': 16.8056},
-    "B11": {'_n': 100, 'vague': 0.7391, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.0, 'simile': 0.9632, 'sent_den': 48.1361, 'para_med': 23.0, 'short_run': 2.0, 'tail': 0.1111, 'bold': 0.0, 'dede': 0.0, 'isde': 0.4916, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 3.1385, 'short': 0.1596, 'head': 0.0111, 'tell': 0.0, 'cv': 0.4984, 'sent_p90': 33.0, 'sent_p10': 8.0, 'comma_in': 49.51, 'lit': 20.2481, 'para_cv': 0.5472, 'emo': 3.45, 'net_oral': 0.9851, 'exclaim': 2.2247, 'redupl': 12.3957, 'imm_cog': 0.9908, 'imm_perc': 0.9881, 'imm_soma': 1.4437, 'breath': 0.0, 'pron3': 5.3636, 'pron_start': 0.0113, 'sent_med': 19.0, 'g_turn': 4.4042, 'surprise': 0.4942, 'conn_lit': 2.851, 'touch_temp': 0.2224, 'question': 4.3288, 'emo_type': 3.7772, 'dial_sent': 15.0},
-    "B12": {'_n': 100, 'vague': 0.6478, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.0, 'simile': 0.0, 'sent_den': 18.2, 'para_med': 60.5, 'short_run': 1.0, 'tail': 0.0, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 2.3719, 'short': 0.0814, 'head': 0.0182, 'tell': 0.0, 'cv': 0.7811, 'sent_p90': 108.0, 'sent_p10': 8.0, 'comma_in': 75.1294, 'lit': 20.5648, 'para_cv': 0.5795, 'emo': 7.1262, 'net_oral': 2.4211, 'exclaim': 1.996, 'redupl': 10.5603, 'imm_cog': 1.1045, 'imm_perc': 0.9538, 'imm_soma': 3.6072, 'breath': 0.0, 'pron3': 5.6005, 'pron_start': 0.0, 'sent_med': 47.5, 'g_turn': 4.277, 'surprise': 1.2877, 'conn_lit': 1.3038, 'touch_temp': 0.5815, 'question': 15.0342, 'emo_type': 10.7418, 'dial_sent': 22.6685},
-    "B13": {'_n': 100, 'vague': 0.8185, 'nego': 0.0, 'dash': 0.0, 'rev': 0.2359, 'enum': 0.0, 'simile': 1.0645, 'sent_den': 32.7466, 'para_med': 59.75, 'short_run': 1.0, 'tail': 0.0506, 'bold': 0.0, 'dede': 0.0, 'isde': 1.0438, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 2.0216, 'short': 0.0229, 'head': 0.0248, 'tell': 0.0, 'cv': 0.6275, 'sent_p90': 55.0, 'sent_p10': 9.5, 'comma_in': 55.2547, 'lit': 13.0315, 'para_cv': 0.5684, 'emo': 3.6268, 'net_oral': 1.5905, 'exclaim': 0.0, 'redupl': 3.5077, 'imm_cog': 0.7018, 'imm_perc': 1.1783, 'imm_soma': 2.193, 'breath': 0.0, 'pron3': 12.6368, 'pron_start': 0.0293, 'sent_med': 26.0, 'g_turn': 3.2756, 'surprise': 0.9807, 'conn_lit': 2.6112, 'touch_temp': 0.3548, 'question': 7.3622, 'emo_type': 4.1452, 'dial_sent': 16.3995},
-    "B14": {'_n': 100, 'vague': 0.7398, 'nego': 0.0, 'dash': 0.0, 'rev': 0.3946, 'enum': 0.0, 'simile': 1.0077, 'sent_den': 12.4279, 'para_med': 84.75, 'short_run': 1.0, 'tail': 0.0, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 0.4102, 'short': 0.05, 'head': 0.0286, 'tell': 0.0, 'cv': 0.594, 'sent_p90': 134.5, 'sent_p10': 12.0, 'comma_in': 71.9262, 'lit': 9.8712, 'para_cv': 0.479, 'emo': 3.2762, 'net_oral': 0.8629, 'exclaim': 0.0, 'redupl': 7.5468, 'imm_cog': 0.4532, 'imm_perc': 1.9701, 'imm_soma': 2.3092, 'breath': 0.0, 'pron3': 13.7275, 'pron_start': 0.0, 'sent_med': 79.5, 'g_turn': 2.843, 'surprise': 0.3544, 'conn_lit': 0.0, 'touch_temp': 0.6951, 'question': 16.8189, 'emo_type': 15.8493, 'dial_sent': 28.0714},
-    "B15": {'_n': 100, 'vague': 0.4866, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.0, 'simile': 0.4854, 'sent_den': 20.058, 'para_med': 56.25, 'short_run': 1.0, 'tail': 0.0241, 'bold': 0.0, 'dede': 0.0, 'isde': 0.1232, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 0.6933, 'short': 0.0833, 'head': 0.0238, 'tell': 0.0, 'cv': 0.652, 'sent_p90': 90.5, 'sent_p10': 11.0, 'comma_in': 55.0146, 'lit': 17.3012, 'para_cv': 0.5622, 'emo': 2.1117, 'net_oral': 0.9716, 'exclaim': 0.5689, 'redupl': 6.3091, 'imm_cog': 0.4871, 'imm_perc': 1.3085, 'imm_soma': 0.9732, 'breath': 0.0, 'pron3': 11.7439, 'pron_start': 0.0256, 'sent_med': 45.0, 'g_turn': 3.293, 'surprise': 0.4792, 'conn_lit': 1.3633, 'touch_temp': 0.0, 'question': 13.5469, 'emo_type': 7.6923, 'dial_sent': 21.8598},
-    "B16": {'_n': 100, 'vague': 0.8222, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.2793, 'simile': 0.5406, 'sent_den': 44.7306, 'para_med': 31.0, 'short_run': 2.0, 'tail': 0.0702, 'bold': 0.0, 'dede': 0.0, 'isde': 0.922, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 1.3599, 'short': 0.1587, 'head': 0.0177, 'tell': 0.0, 'cv': 0.7483, 'sent_p90': 43.0, 'sent_p10': 5.0, 'comma_in': 53.1758, 'lit': 11.0914, 'para_cv': 0.7167, 'emo': 6.6383, 'net_oral': 2.2109, 'exclaim': 3.7, 'redupl': 14.3902, 'imm_cog': 1.0831, 'imm_perc': 1.5403, 'imm_soma': 1.8605, 'breath': 0.0, 'pron3': 5.5372, 'pron_start': 0.0124, 'sent_med': 17.0, 'g_turn': 4.2393, 'surprise': 1.0622, 'conn_lit': 0.2846, 'touch_temp': 0.2758, 'question': 8.9214, 'emo_type': 4.0161, 'dial_sent': 13.7566},
-    "B17": {'_n': 100, 'vague': 0.569, 'nego': 0.0, 'dash': 0.0, 'rev': 0.3264, 'enum': 0.0, 'simile': 0.632, 'sent_den': 46.0043, 'para_med': 41.0, 'short_run': 1.0, 'tail': 0.0357, 'bold': 0.0, 'dede': 0.0, 'isde': 0.9238, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 2.4348, 'short': 0.0828, 'head': 0.0241, 'tell': 0.0, 'cv': 0.7944, 'sent_p90': 45.0, 'sent_p10': 5.0, 'comma_in': 44.5036, 'lit': 8.8801, 'para_cv': 0.7494, 'emo': 3.6224, 'net_oral': 5.2261, 'exclaim': 5.4524, 'redupl': 12.5125, 'imm_cog': 0.82, 'imm_perc': 1.9516, 'imm_soma': 1.2034, 'breath': 0.0, 'pron3': 9.1304, 'pron_start': 0.0157, 'sent_med': 17.0, 'g_turn': 2.5525, 'surprise': 0.6382, 'conn_lit': 2.5774, 'touch_temp': 0.4536, 'question': 12.8205, 'emo_type': 3.7895, 'dial_sent': 11.1636},
-    "B18": {'_n': 100, 'vague': 0.4906, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.0, 'simile': 0.9535, 'sent_den': 19.337, 'para_med': 58.5, 'short_run': 0.0, 'tail': 0.0, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 0.5009, 'short': 0.0, 'head': 0.0263, 'tell': 0.0, 'cv': 0.6115, 'sent_p90': 90.0, 'sent_p10': 12.0, 'comma_in': 45.2972, 'lit': 14.7866, 'para_cv': 0.4132, 'emo': 1.9866, 'net_oral': 1.4951, 'exclaim': 0.0, 'redupl': 1.4892, 'imm_cog': 0.9923, 'imm_perc': 0.994, 'imm_soma': 0.5024, 'breath': 0.0, 'pron3': 11.2763, 'pron_start': 0.0, 'sent_med': 48.0, 'g_turn': 4.6049, 'surprise': 0.8988, 'conn_lit': 0.7272, 'touch_temp': 0.0, 'question': 8.3333, 'emo_type': 6.9971, 'dial_sent': 24.125},
-    "B19": {'_n': 100, 'vague': 0.3713, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.3094, 'simile': 1.1359, 'sent_den': 28.1751, 'para_med': 32.0, 'short_run': 2.0, 'tail': 0.0234, 'bold': 0.0, 'dede': 0.0, 'isde': 0.2602, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 0.649, 'short': 0.1137, 'head': 0.0396, 'tell': 0.0, 'cv': 0.7135, 'sent_p90': 65.0, 'sent_p10': 8.5, 'comma_in': 56.5432, 'lit': 16.4941, 'para_cv': 0.6954, 'emo': 3.4757, 'net_oral': 0.9685, 'exclaim': 2.3228, 'redupl': 11.5552, 'imm_cog': 1.2682, 'imm_perc': 1.506, 'imm_soma': 1.8605, 'breath': 0.0, 'pron3': 10.4344, 'pron_start': 0.071, 'sent_med': 29.75, 'g_turn': 0.9063, 'surprise': 0.3077, 'conn_lit': 1.646, 'touch_temp': 0.3185, 'question': 11.6295, 'emo_type': 5.8397, 'dial_sent': 9.8203},
-    "B20": {'_n': 100, 'vague': 1.4739, 'nego': 0.0, 'dash': 0.0, 'rev': 0.1566, 'enum': 0.57, 'simile': 1.2902, 'sent_den': 37.9329, 'para_med': 24.0, 'short_run': 4.0, 'tail': 0.0289, 'bold': 0.0, 'dede': 0.0, 'isde': 0.5026, 'onomat': 0.0, 'space': 0.2341, 'dem_lit': 0.5522, 'short': 0.2469, 'head': 0.0127, 'tell': 0.0, 'cv': 0.8724, 'sent_p90': 55.0, 'sent_p10': 4.0, 'comma_in': 51.3971, 'lit': 4.7133, 'para_cv': 0.7429, 'emo': 3.8569, 'net_oral': 6.8494, 'exclaim': 7.4219, 'redupl': 23.6098, 'imm_cog': 0.9828, 'imm_perc': 1.5302, 'imm_soma': 1.8218, 'breath': 0.0, 'pron3': 10.825, 'pron_start': 0.0171, 'sent_med': 18.5, 'g_turn': 1.8147, 'surprise': 0.3709, 'conn_lit': 1.2077, 'touch_temp': 0.9735, 'question': 14.3268, 'emo_type': 3.6585, 'dial_sent': 11.8537},
-    "B21": {'_n': 100, 'vague': 0.2387, 'nego': 0.0, 'dash': 0.0, 'rev': 0.2702, 'enum': 0.2894, 'simile': 1.0878, 'sent_den': 31.3811, 'para_med': 42.0, 'short_run': 1.0, 'tail': 0.0106, 'bold': 0.0, 'dede': 0.0, 'isde': 0.2068, 'onomat': 0.2806, 'space': 0.0, 'dem_lit': 2.1551, 'short': 0.0851, 'head': 0.0104, 'tell': 0.0, 'cv': 0.5685, 'sent_p90': 52.0, 'sent_p10': 6.0, 'comma_in': 75.6393, 'lit': 11.6744, 'para_cv': 0.4484, 'emo': 4.9552, 'net_oral': 1.3617, 'exclaim': 3.5983, 'redupl': 11.3612, 'imm_cog': 0.5217, 'imm_perc': 0.8946, 'imm_soma': 2.6224, 'breath': 0.0, 'pron3': 9.8394, 'pron_start': 0.029, 'sent_med': 32.0, 'g_turn': 3.4035, 'surprise': 0.3163, 'conn_lit': 1.4534, 'touch_temp': 0.5781, 'question': 7.4271, 'emo_type': 5.3623, 'dial_sent': 18.1267},
-    "B22": {'_n': 100, 'vague': 0.2329, 'nego': 0.0, 'dash': 0.0, 'rev': 0.2697, 'enum': 0.0, 'simile': 0.4884, 'sent_den': 19.4973, 'para_med': 40.0, 'short_run': 2.0, 'tail': 0.0319, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0431, 'onomat': 0.0, 'space': 0.3001, 'dem_lit': 1.3044, 'short': 0.1144, 'head': 0.0296, 'tell': 0.0, 'cv': 0.9028, 'sent_p90': 109.5, 'sent_p10': 11.5, 'comma_in': 66.1329, 'lit': 9.9003, 'para_cv': 1.1999, 'emo': 6.8046, 'net_oral': 1.4463, 'exclaim': 1.2406, 'redupl': 1.1907, 'imm_cog': 0.4038, 'imm_perc': 1.0599, 'imm_soma': 2.2134, 'breath': 0.1757, 'pron3': 4.6745, 'pron_start': 0.012, 'sent_med': 35.0, 'g_turn': 2.3361, 'surprise': 0.3134, 'conn_lit': 1.1472, 'touch_temp': 2.52, 'question': 15.4846, 'emo_type': 11.1806, 'dial_sent': 24.9306},
-    "B23": {'_n': 100, 'vague': 0.3455, 'nego': 0.0, 'dash': 0.0, 'rev': 0.2943, 'enum': 0.39, 'simile': 1.4318, 'sent_den': 31.0699, 'para_med': 25.5, 'short_run': 3.0, 'tail': 0.0957, 'bold': 0.0, 'dede': 0.0, 'isde': 0.4287, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 1.397, 'short': 0.2596, 'head': 0.0132, 'tell': 0.0, 'cv': 0.854, 'sent_p90': 65.5, 'sent_p10': 6.0, 'comma_in': 69.9069, 'lit': 11.8851, 'para_cv': 0.7568, 'emo': 4.2214, 'net_oral': 1.3366, 'exclaim': 6.8722, 'redupl': 15.4417, 'imm_cog': 0.8945, 'imm_perc': 1.1943, 'imm_soma': 1.4251, 'breath': 0.0, 'pron3': 9.3577, 'pron_start': 0.0448, 'sent_med': 24.0, 'g_turn': 2.3674, 'surprise': 0.8687, 'conn_lit': 1.8321, 'touch_temp': 0.2921, 'question': 16.0868, 'emo_type': 5.7916, 'dial_sent': 23.5689},
-    "B24": {'_n': 100, 'vague': 0.9121, 'nego': 0.0, 'dash': 0.3118, 'rev': 0.2143, 'enum': 0.2487, 'simile': 0.765, 'sent_den': 19.2641, 'para_med': 54.0, 'short_run': 1.0, 'tail': 0.0237, 'bold': 0.0, 'dede': 0.0, 'isde': 0.591, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 0.8132, 'short': 0.0691, 'head': 0.0183, 'tell': 0.0, 'cv': 0.827, 'sent_p90': 110.5, 'sent_p10': 8.0, 'comma_in': 45.5396, 'lit': 18.8476, 'para_cv': 0.6845, 'emo': 3.1883, 'net_oral': 1.3744, 'exclaim': 1.1428, 'redupl': 7.3159, 'imm_cog': 0.7269, 'imm_perc': 1.6686, 'imm_soma': 1.4865, 'breath': 0.0, 'pron3': 9.3661, 'pron_start': 0.0336, 'sent_med': 38.0, 'g_turn': 2.0035, 'surprise': 0.2733, 'conn_lit': 3.5328, 'touch_temp': 0.4859, 'question': 15.35, 'emo_type': 6.5591, 'dial_sent': 17.9567},
+    "B01": {'_n': 100, 'vague': 0.3693, 'nego': 0.0, 'dash': 0.0, 'rev': 0.3287, 'enum': 0.0, 'simile': 0.7452, 'sent_den': 23.7371, 'para_med': 58.0, 'short_run': 1.0, 'tail': 0.0235, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0, 'onomat': 0.0, 'space': 0.0, 'short': 0.063, 'tell': 0.0, 'cv': 0.6888, 'dem_lit': 4.6035, 'sent_p90': 79.5, 'sent_p10': 6.0, 'comma_in': 88.8797, 'lit': 15.1581, 'para_cv': 0.5025, 'emo': 4.7988, 'net_oral': 1.098, 'dial_sent': 18.8459, 'exclaim': 6.8249, 'redupl': 6.1689, 'question': 2.1055, 'emo_type': 8.4507, 'imm_cog': 1.1527, 'imm_perc': 2.3422, 'imm_soma': 2.3063, 'breath': 0.3752, 'surprise': 0.7593, 'touch_temp': 0.3513, 'pron3': 9.9561, 'pron_start': 0.0216, 'sent_med': 39.5, 'g_turn': 1.7716, 'conn_lit': 0.7115},
+    "B02": {'_n': 100, 'vague': 0.3272, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.0, 'simile': 0.6368, 'sent_den': 23.4577, 'para_med': 52.0, 'short_run': 1.0, 'tail': 0.0318, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0, 'onomat': 0.0, 'space': 0.0, 'short': 0.0305, 'tell': 0.0, 'cv': 0.5911, 'dem_lit': 5.0279, 'sent_p90': 75.0, 'sent_p10': 11.0, 'comma_in': 86.6435, 'lit': 23.7106, 'para_cv': 0.466, 'emo': 3.4402, 'net_oral': 0.327, 'dial_sent': 20.025, 'exclaim': 7.7759, 'redupl': 7.3949, 'question': 0.0, 'emo_type': 6.8969, 'imm_cog': 0.8955, 'imm_perc': 1.3042, 'imm_soma': 2.5016, 'breath': 0.0, 'surprise': 0.3294, 'touch_temp': 0.3245, 'pron3': 8.8675, 'pron_start': 0.0323, 'sent_med': 40.0, 'g_turn': 3.1757, 'conn_lit': 3.1361},
+    "B03": {'_n': 100, 'vague': 0.8694, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.3285, 'simile': 0.4946, 'sent_den': 45.9316, 'para_med': 27.75, 'short_run': 3.0, 'tail': 0.0674, 'bold': 0.0, 'dede': 0.0, 'isde': 0.4516, 'onomat': 0.0, 'space': 0.0, 'short': 0.1567, 'tell': 0.0, 'cv': 0.6386, 'dem_lit': 0.4803, 'sent_p90': 39.0, 'sent_p10': 6.0, 'comma_in': 47.8602, 'lit': 8.9436, 'para_cv': 0.6639, 'emo': 2.4065, 'net_oral': 3.2658, 'dial_sent': 10.8838, 'exclaim': 2.8531, 'redupl': 6.173, 'question': 14.8332, 'emo_type': 3.0458, 'imm_cog': 0.3834, 'imm_perc': 0.9405, 'imm_soma': 1.6295, 'breath': 0.0, 'surprise': 0.329, 'touch_temp': 0.4785, 'pron3': 10.9577, 'pron_start': 0.0317, 'sent_med': 18.0, 'g_turn': 1.6464, 'conn_lit': 1.3661},
+    "B04": {'_n': 100, 'vague': 0.6527, 'nego': 0.0, 'dash': 0.0, 'rev': 0.3244, 'enum': 0.0, 'simile': 0.6342, 'sent_den': 38.2628, 'para_med': 44.5, 'short_run': 2.0, 'tail': 0.0374, 'bold': 0.0, 'dede': 0.0, 'isde': 0.948, 'onomat': 0.0, 'space': 0.0, 'short': 0.1293, 'tell': 0.0, 'cv': 0.7163, 'dem_lit': 1.9087, 'sent_p90': 49.0, 'sent_p10': 5.0, 'comma_in': 49.5629, 'lit': 8.8642, 'para_cv': 0.7578, 'emo': 5.3834, 'net_oral': 4.4325, 'dial_sent': 10.5181, 'exclaim': 4.2335, 'redupl': 3.8035, 'question': 11.835, 'emo_type': 4.167, 'imm_cog': 0.9494, 'imm_perc': 1.8586, 'imm_soma': 1.2563, 'breath': 0.0, 'surprise': 0.6383, 'touch_temp': 0.3226, 'pron3': 8.4827, 'pron_start': 0.0216, 'sent_med': 22.0, 'g_turn': 4.8387, 'conn_lit': 2.1158},
+    "B05": {'_n': 100, 'vague': 0.7134, 'nego': 0.0, 'dash': 0.0, 'rev': 0.2558, 'enum': 0.0, 'simile': 0.7057, 'sent_den': 34.7395, 'para_med': 42.0, 'short_run': 1.0, 'tail': 0.0331, 'bold': 0.0, 'dede': 0.0, 'isde': 0.3747, 'onomat': 0.0, 'space': 0.0, 'short': 0.0476, 'tell': 0.0, 'cv': 0.5834, 'dem_lit': 6.1085, 'sent_p90': 49.5, 'sent_p10': 9.0, 'comma_in': 54.0045, 'lit': 18.5989, 'para_cv': 0.5649, 'emo': 4.9957, 'net_oral': 1.8924, 'dial_sent': 16.564, 'exclaim': 2.5762, 'redupl': 6.7953, 'question': 4.4544, 'emo_type': 5.6864, 'imm_cog': 1.0372, 'imm_perc': 1.1226, 'imm_soma': 2.9343, 'breath': 0.0, 'surprise': 0.7407, 'touch_temp': 0.3674, 'pron3': 4.9262, 'pron_start': 0.0205, 'sent_med': 25.0, 'g_turn': 3.3059, 'conn_lit': 2.9608},
+    "B06": {'_n': 100, 'vague': 0.3202, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.324, 'simile': 0.9266, 'sent_den': 43.1542, 'para_med': 23.0, 'short_run': 3.0, 'tail': 0.0611, 'bold': 0.0, 'dede': 0.0, 'isde': 0.6367, 'onomat': 0.1401, 'space': 0.0, 'short': 0.3031, 'tell': 0.0, 'cv': 0.8617, 'dem_lit': 0.6387, 'sent_p90': 47.0, 'sent_p10': 4.0, 'comma_in': 52.1946, 'lit': 14.7795, 'para_cv': 0.9057, 'emo': 4.2324, 'net_oral': 1.5639, 'dial_sent': 13.9847, 'exclaim': 7.173, 'redupl': 6.5328, 'question': 7.5171, 'emo_type': 3.6631, 'imm_cog': 0.8973, 'imm_perc': 0.9707, 'imm_soma': 1.5718, 'breath': 0.0, 'surprise': 0.6392, 'touch_temp': 0.0, 'pron3': 4.9099, 'pron_start': 0.0123, 'sent_med': 16.25, 'g_turn': 2.9897, 'conn_lit': 0.3271},
+    "B07": {'_n': 100, 'vague': 1.1257, 'nego': 0.0, 'dash': 0.0, 'rev': 0.3156, 'enum': 0.0, 'simile': 1.0912, 'sent_den': 33.4877, 'para_med': 36.5, 'short_run': 2.0, 'tail': 0.0437, 'bold': 0.0, 'dede': 0.0, 'isde': 2.1267, 'onomat': 0.0, 'space': 0.0, 'short': 0.1034, 'tell': 0.0, 'cv': 0.6877, 'dem_lit': 0.7875, 'sent_p90': 54.5, 'sent_p10': 7.0, 'comma_in': 64.4551, 'lit': 8.0349, 'para_cv': 0.6365, 'emo': 2.7983, 'net_oral': 2.6107, 'dial_sent': 17.086, 'exclaim': 0.3544, 'redupl': 5.9483, 'question': 9.0398, 'emo_type': 3.4483, 'imm_cog': 0.4395, 'imm_perc': 0.8318, 'imm_soma': 1.0291, 'breath': 0.0, 'surprise': 0.0, 'touch_temp': 0.4824, 'pron3': 4.7915, 'pron_start': 0.019, 'sent_med': 24.25, 'g_turn': 1.2331, 'conn_lit': 2.3124},
+    "B08": {'_n': 100, 'vague': 0.2214, 'nego': 0.0, 'dash': 0.0, 'rev': 0.2783, 'enum': 0.2844, 'simile': 1.2587, 'sent_den': 32.459, 'para_med': 38.0, 'short_run': 2.0, 'tail': 0.0455, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0692, 'onomat': 0.37, 'space': 0.0, 'short': 0.1126, 'tell': 0.0, 'cv': 0.5859, 'dem_lit': 1.7537, 'sent_p90': 50.0, 'sent_p10': 6.0, 'comma_in': 84.3975, 'lit': 11.175, 'para_cv': 0.5007, 'emo': 5.1224, 'net_oral': 1.8511, 'dial_sent': 18.9545, 'exclaim': 8.2394, 'redupl': 3.367, 'question': 10.0149, 'emo_type': 5.8333, 'imm_cog': 0.6127, 'imm_perc': 1.8636, 'imm_soma': 2.683, 'breath': 0.2143, 'surprise': 0.6633, 'touch_temp': 0.5772, 'pron3': 15.4425, 'pron_start': 0.0521, 'sent_med': 30.0, 'g_turn': 3.1844, 'conn_lit': 1.2593},
+    "B09": {'_n': 100, 'vague': 1.476, 'nego': 0.0, 'dash': 0.0, 'rev': 0.4794, 'enum': 0.0, 'simile': 0.9749, 'sent_den': 27.1197, 'para_med': 40.25, 'short_run': 1.0, 'tail': 0.0233, 'bold': 0.0, 'dede': 0.0, 'isde': 0.4879, 'onomat': 0.0, 'space': 0.0, 'short': 0.0632, 'tell': 0.0, 'cv': 0.6053, 'dem_lit': 1.3722, 'sent_p90': 65.0, 'sent_p10': 9.0, 'comma_in': 46.6757, 'lit': 12.3929, 'para_cv': 0.5496, 'emo': 4.2971, 'net_oral': 6.4229, 'dial_sent': 15.6932, 'exclaim': 5.6765, 'redupl': 5.798, 'question': 21.0608, 'emo_type': 7.9474, 'imm_cog': 2.9311, 'imm_perc': 2.1239, 'imm_soma': 1.4451, 'breath': 0.0, 'surprise': 1.386, 'touch_temp': 0.4904, 'pron3': 9.9587, 'pron_start': 0.02, 'sent_med': 33.25, 'g_turn': 3.4014, 'conn_lit': 1.9724},
+    "B10": {'_n': 100, 'vague': 0.2603, 'nego': 0.0, 'dash': 0.0, 'rev': 0.2759, 'enum': 0.2768, 'simile': 1.2239, 'sent_den': 34.4775, 'para_med': 40.25, 'short_run': 1.0, 'tail': 0.0258, 'bold': 0.0, 'dede': 0.0, 'isde': 0.1493, 'onomat': 0.2655, 'space': 0.0, 'short': 0.0985, 'tell': 0.0, 'cv': 0.5975, 'dem_lit': 2.3699, 'sent_p90': 49.0, 'sent_p10': 5.0, 'comma_in': 85.4711, 'lit': 11.8242, 'para_cv': 0.4537, 'emo': 5.7233, 'net_oral': 1.8648, 'dial_sent': 16.8056, 'exclaim': 5.7572, 'redupl': 3.6942, 'question': 9.392, 'emo_type': 5.2174, 'imm_cog': 0.617, 'imm_perc': 1.3038, 'imm_soma': 2.3977, 'breath': 0.0, 'surprise': 0.6467, 'touch_temp': 0.4853, 'pron3': 12.0501, 'pron_start': 0.0387, 'sent_med': 29.0, 'g_turn': 2.8335, 'conn_lit': 1.4348},
+    "B11": {'_n': 100, 'vague': 0.7391, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.0, 'simile': 0.9632, 'sent_den': 48.1361, 'para_med': 23.0, 'short_run': 2.0, 'tail': 0.1111, 'bold': 0.0, 'dede': 0.0, 'isde': 0.4916, 'onomat': 0.0, 'space': 0.0, 'short': 0.1596, 'tell': 0.0, 'cv': 0.4984, 'dem_lit': 3.1385, 'sent_p90': 33.0, 'sent_p10': 8.0, 'comma_in': 49.51, 'lit': 20.2481, 'para_cv': 0.5472, 'emo': 3.45, 'net_oral': 0.9851, 'dial_sent': 15.0, 'exclaim': 2.2247, 'redupl': 6.3729, 'question': 4.3288, 'emo_type': 3.7772, 'imm_cog': 0.9908, 'imm_perc': 0.9881, 'imm_soma': 1.4437, 'breath': 0.0, 'surprise': 0.4942, 'touch_temp': 0.2224, 'pron3': 5.3636, 'pron_start': 0.0113, 'sent_med': 19.0, 'g_turn': 4.4042, 'conn_lit': 2.851},
+    "B12": {'_n': 100, 'vague': 0.6478, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.0, 'simile': 0.0, 'sent_den': 18.2, 'para_med': 60.5, 'short_run': 1.0, 'tail': 0.0, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0, 'onomat': 0.0, 'space': 0.0, 'short': 0.0814, 'tell': 0.0, 'cv': 0.7811, 'dem_lit': 2.3719, 'sent_p90': 108.0, 'sent_p10': 8.0, 'comma_in': 75.1294, 'lit': 20.5648, 'para_cv': 0.5795, 'emo': 7.1262, 'net_oral': 2.4211, 'dial_sent': 22.6685, 'exclaim': 1.996, 'redupl': 9.2175, 'question': 15.0342, 'emo_type': 10.7418, 'imm_cog': 1.1045, 'imm_perc': 0.9538, 'imm_soma': 3.6072, 'breath': 0.0, 'surprise': 1.2877, 'touch_temp': 0.5815, 'pron3': 5.6005, 'pron_start': 0.0, 'sent_med': 47.5, 'g_turn': 4.277, 'conn_lit': 1.3038},
+    "B13": {'_n': 100, 'vague': 0.8185, 'nego': 0.0, 'dash': 0.0, 'rev': 0.2359, 'enum': 0.0, 'simile': 1.0645, 'sent_den': 32.7466, 'para_med': 59.75, 'short_run': 1.0, 'tail': 0.0506, 'bold': 0.0, 'dede': 0.0, 'isde': 1.0438, 'onomat': 0.0, 'space': 0.0, 'short': 0.0229, 'tell': 0.0, 'cv': 0.6275, 'dem_lit': 2.0216, 'sent_p90': 55.0, 'sent_p10': 9.5, 'comma_in': 55.2547, 'lit': 13.0315, 'para_cv': 0.5684, 'emo': 3.6268, 'net_oral': 1.5905, 'dial_sent': 16.3995, 'exclaim': 0.0, 'redupl': 4.8062, 'question': 7.3622, 'emo_type': 4.1452, 'imm_cog': 0.7018, 'imm_perc': 1.1783, 'imm_soma': 2.193, 'breath': 0.0, 'surprise': 0.9807, 'touch_temp': 0.3548, 'pron3': 12.6368, 'pron_start': 0.0293, 'sent_med': 26.0, 'g_turn': 3.2756, 'conn_lit': 2.6112},
+    "B14": {'_n': 100, 'vague': 0.7398, 'nego': 0.0, 'dash': 0.0, 'rev': 0.3946, 'enum': 0.0, 'simile': 1.0077, 'sent_den': 12.4279, 'para_med': 84.75, 'short_run': 1.0, 'tail': 0.0, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0, 'onomat': 0.0, 'space': 0.0, 'short': 0.05, 'tell': 0.0, 'cv': 0.594, 'dem_lit': 0.4102, 'sent_p90': 134.5, 'sent_p10': 12.0, 'comma_in': 71.9262, 'lit': 9.8712, 'para_cv': 0.479, 'emo': 3.2762, 'net_oral': 0.8629, 'dial_sent': 28.0714, 'exclaim': 0.0, 'redupl': 6.1466, 'question': 16.8189, 'emo_type': 15.8493, 'imm_cog': 0.4532, 'imm_perc': 1.9701, 'imm_soma': 2.3092, 'breath': 0.0, 'surprise': 0.3544, 'touch_temp': 0.6951, 'pron3': 13.7275, 'pron_start': 0.0, 'sent_med': 79.5, 'g_turn': 2.843, 'conn_lit': 0.0},
+    "B15": {'_n': 100, 'vague': 0.4866, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.0, 'simile': 0.4854, 'sent_den': 20.058, 'para_med': 56.25, 'short_run': 1.0, 'tail': 0.0241, 'bold': 0.0, 'dede': 0.0, 'isde': 0.1232, 'onomat': 0.0, 'space': 0.0, 'short': 0.0833, 'tell': 0.0, 'cv': 0.652, 'dem_lit': 0.6933, 'sent_p90': 90.5, 'sent_p10': 11.0, 'comma_in': 55.0146, 'lit': 17.3012, 'para_cv': 0.5622, 'emo': 2.1117, 'net_oral': 0.9716, 'dial_sent': 21.8598, 'exclaim': 0.5689, 'redupl': 4.7634, 'question': 13.5469, 'emo_type': 7.6923, 'imm_cog': 0.4871, 'imm_perc': 1.3085, 'imm_soma': 0.9732, 'breath': 0.0, 'surprise': 0.4792, 'touch_temp': 0.0, 'pron3': 11.7439, 'pron_start': 0.0256, 'sent_med': 45.0, 'g_turn': 3.293, 'conn_lit': 1.3633},
+    "B16": {'_n': 100, 'vague': 0.8222, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.2793, 'simile': 0.5406, 'sent_den': 44.7306, 'para_med': 31.0, 'short_run': 2.0, 'tail': 0.0702, 'bold': 0.0, 'dede': 0.0, 'isde': 0.922, 'onomat': 0.0, 'space': 0.0, 'short': 0.1587, 'tell': 0.0, 'cv': 0.7483, 'dem_lit': 1.3599, 'sent_p90': 43.0, 'sent_p10': 5.0, 'comma_in': 53.1758, 'lit': 11.0914, 'para_cv': 0.7167, 'emo': 6.6383, 'net_oral': 2.2109, 'dial_sent': 13.7566, 'exclaim': 3.7, 'redupl': 6.9409, 'question': 8.9214, 'emo_type': 4.0161, 'imm_cog': 1.0831, 'imm_perc': 1.5403, 'imm_soma': 1.8605, 'breath': 0.0, 'surprise': 1.0622, 'touch_temp': 0.2758, 'pron3': 5.5372, 'pron_start': 0.0124, 'sent_med': 17.0, 'g_turn': 4.2393, 'conn_lit': 0.2846},
+    "B17": {'_n': 100, 'vague': 0.569, 'nego': 0.0, 'dash': 0.0, 'rev': 0.3264, 'enum': 0.0, 'simile': 0.632, 'sent_den': 46.0043, 'para_med': 41.0, 'short_run': 1.0, 'tail': 0.0357, 'bold': 0.0, 'dede': 0.0, 'isde': 0.9238, 'onomat': 0.0, 'space': 0.0, 'short': 0.0828, 'tell': 0.0, 'cv': 0.7944, 'dem_lit': 2.4348, 'sent_p90': 45.0, 'sent_p10': 5.0, 'comma_in': 44.5036, 'lit': 8.8801, 'para_cv': 0.7494, 'emo': 3.6224, 'net_oral': 5.2261, 'dial_sent': 11.1636, 'exclaim': 5.4524, 'redupl': 5.262, 'question': 12.8205, 'emo_type': 3.7895, 'imm_cog': 0.82, 'imm_perc': 1.9516, 'imm_soma': 1.2034, 'breath': 0.0, 'surprise': 0.6382, 'touch_temp': 0.4536, 'pron3': 9.1304, 'pron_start': 0.0157, 'sent_med': 17.0, 'g_turn': 2.5525, 'conn_lit': 2.5774},
+    "B18": {'_n': 100, 'vague': 0.4906, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.0, 'simile': 0.9535, 'sent_den': 19.337, 'para_med': 58.5, 'short_run': 0.0, 'tail': 0.0, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0, 'onomat': 0.0, 'space': 0.0, 'short': 0.0, 'tell': 0.0, 'cv': 0.6115, 'dem_lit': 0.5009, 'sent_p90': 90.0, 'sent_p10': 12.0, 'comma_in': 45.2972, 'lit': 14.7866, 'para_cv': 0.4132, 'emo': 1.9866, 'net_oral': 1.4951, 'dial_sent': 24.125, 'exclaim': 0.0, 'redupl': 2.9405, 'question': 8.3333, 'emo_type': 6.9971, 'imm_cog': 0.9923, 'imm_perc': 0.994, 'imm_soma': 0.5024, 'breath': 0.0, 'surprise': 0.8988, 'touch_temp': 0.0, 'pron3': 11.2763, 'pron_start': 0.0, 'sent_med': 48.0, 'g_turn': 4.6049, 'conn_lit': 0.7272},
+    "B19": {'_n': 100, 'vague': 0.3713, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.3094, 'simile': 1.1359, 'sent_den': 28.1751, 'para_med': 32.0, 'short_run': 2.0, 'tail': 0.0234, 'bold': 0.0, 'dede': 0.0, 'isde': 0.2602, 'onomat': 0.0, 'space': 0.0, 'short': 0.1137, 'tell': 0.0, 'cv': 0.7135, 'dem_lit': 0.649, 'sent_p90': 65.0, 'sent_p10': 8.5, 'comma_in': 56.5432, 'lit': 16.4941, 'para_cv': 0.6954, 'emo': 3.4757, 'net_oral': 0.9685, 'dial_sent': 9.8203, 'exclaim': 2.3228, 'redupl': 3.7795, 'question': 11.6295, 'emo_type': 5.8397, 'imm_cog': 1.2682, 'imm_perc': 1.506, 'imm_soma': 1.8605, 'breath': 0.0, 'surprise': 0.3077, 'touch_temp': 0.3185, 'pron3': 10.4344, 'pron_start': 0.071, 'sent_med': 29.75, 'g_turn': 0.9063, 'conn_lit': 1.646},
+    "B20": {'_n': 100, 'vague': 1.4739, 'nego': 0.0, 'dash': 0.0, 'rev': 0.1566, 'enum': 0.57, 'simile': 1.2902, 'sent_den': 37.9329, 'para_med': 24.0, 'short_run': 4.0, 'tail': 0.0289, 'bold': 0.0, 'dede': 0.0, 'isde': 0.5026, 'onomat': 0.0, 'space': 0.2341, 'short': 0.2469, 'tell': 0.0, 'cv': 0.8724, 'dem_lit': 0.5522, 'sent_p90': 55.0, 'sent_p10': 4.0, 'comma_in': 51.3971, 'lit': 4.7133, 'para_cv': 0.7429, 'emo': 3.8569, 'net_oral': 6.8494, 'dial_sent': 11.8537, 'exclaim': 7.4219, 'redupl': 9.8913, 'question': 14.3268, 'emo_type': 3.6585, 'imm_cog': 0.9828, 'imm_perc': 1.5302, 'imm_soma': 1.8218, 'breath': 0.0, 'surprise': 0.3709, 'touch_temp': 0.9735, 'pron3': 10.825, 'pron_start': 0.0171, 'sent_med': 18.5, 'g_turn': 1.8147, 'conn_lit': 1.2077},
+    "B21": {'_n': 100, 'vague': 0.2387, 'nego': 0.0, 'dash': 0.0, 'rev': 0.2702, 'enum': 0.2894, 'simile': 1.0878, 'sent_den': 31.3811, 'para_med': 42.0, 'short_run': 1.0, 'tail': 0.0106, 'bold': 0.0, 'dede': 0.0, 'isde': 0.2068, 'onomat': 0.2806, 'space': 0.0, 'short': 0.0851, 'tell': 0.0, 'cv': 0.5685, 'dem_lit': 2.1551, 'sent_p90': 52.0, 'sent_p10': 6.0, 'comma_in': 75.6393, 'lit': 11.6744, 'para_cv': 0.4484, 'emo': 4.9552, 'net_oral': 1.3617, 'dial_sent': 18.1267, 'exclaim': 3.5983, 'redupl': 4.6804, 'question': 7.4271, 'emo_type': 5.3623, 'imm_cog': 0.5217, 'imm_perc': 0.8946, 'imm_soma': 2.6224, 'breath': 0.0, 'surprise': 0.3163, 'touch_temp': 0.5781, 'pron3': 9.8394, 'pron_start': 0.029, 'sent_med': 32.0, 'g_turn': 3.4035, 'conn_lit': 1.4534},
+    "B22": {'_n': 100, 'vague': 0.2329, 'nego': 0.0, 'dash': 0.0, 'rev': 0.2697, 'enum': 0.0, 'simile': 0.4884, 'sent_den': 19.4973, 'para_med': 40.0, 'short_run': 2.0, 'tail': 0.0319, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0431, 'onomat': 0.0, 'space': 0.3001, 'short': 0.1144, 'tell': 0.0, 'cv': 0.9028, 'dem_lit': 1.3044, 'sent_p90': 109.5, 'sent_p10': 11.5, 'comma_in': 66.1329, 'lit': 9.9003, 'para_cv': 1.1999, 'emo': 6.8046, 'net_oral': 1.4463, 'dial_sent': 24.9306, 'exclaim': 1.2406, 'redupl': 7.1664, 'question': 15.4846, 'emo_type': 11.1806, 'imm_cog': 0.4038, 'imm_perc': 1.0599, 'imm_soma': 2.2134, 'breath': 0.1757, 'surprise': 0.3134, 'touch_temp': 2.52, 'pron3': 4.6745, 'pron_start': 0.012, 'sent_med': 35.0, 'g_turn': 2.3361, 'conn_lit': 1.1472},
+    "B23": {'_n': 100, 'vague': 0.3455, 'nego': 0.0, 'dash': 0.0, 'rev': 0.2943, 'enum': 0.39, 'simile': 1.4318, 'sent_den': 31.0699, 'para_med': 25.5, 'short_run': 3.0, 'tail': 0.0957, 'bold': 0.0, 'dede': 0.0, 'isde': 0.4287, 'onomat': 0.0, 'space': 0.0, 'short': 0.2596, 'tell': 0.0, 'cv': 0.854, 'dem_lit': 1.397, 'sent_p90': 65.5, 'sent_p10': 6.0, 'comma_in': 69.9069, 'lit': 11.8851, 'para_cv': 0.7568, 'emo': 4.2214, 'net_oral': 1.3366, 'dial_sent': 23.5689, 'exclaim': 6.8722, 'redupl': 6.5425, 'question': 16.0868, 'emo_type': 5.7916, 'imm_cog': 0.8945, 'imm_perc': 1.1943, 'imm_soma': 1.4251, 'breath': 0.0, 'surprise': 0.8687, 'touch_temp': 0.2921, 'pron3': 9.3577, 'pron_start': 0.0448, 'sent_med': 24.0, 'g_turn': 2.3674, 'conn_lit': 1.8321},
+    "B24": {'_n': 100, 'vague': 0.9121, 'nego': 0.0, 'dash': 0.3118, 'rev': 0.2143, 'enum': 0.2487, 'simile': 0.765, 'sent_den': 19.2641, 'para_med': 54.0, 'short_run': 1.0, 'tail': 0.0237, 'bold': 0.0, 'dede': 0.0, 'isde': 0.591, 'onomat': 0.0, 'space': 0.0, 'short': 0.0691, 'tell': 0.0, 'cv': 0.827, 'dem_lit': 0.8132, 'sent_p90': 110.5, 'sent_p10': 8.0, 'comma_in': 45.5396, 'lit': 18.8476, 'para_cv': 0.6845, 'emo': 3.1883, 'net_oral': 1.3744, 'dial_sent': 17.9567, 'exclaim': 1.1428, 'redupl': 5.6852, 'question': 15.35, 'emo_type': 6.5591, 'imm_cog': 0.7269, 'imm_perc': 1.6686, 'imm_soma': 1.4865, 'breath': 0.0, 'surprise': 0.2733, 'touch_temp': 0.4859, 'pron3': 9.3661, 'pron_start': 0.0336, 'sent_med': 38.0, 'g_turn': 2.0035, 'conn_lit': 3.5328},
 }
 
-# BENCH_KEYS / BENCH_NEG / BENCH_POS 是旧版「AI 味」时代的遗留：BENCH_KEYS 被
-# check() 之外的任何地方都没用到，BENCH_NEG / BENCH_POS 是「越低越好 / 越高越好」
-# 的方向分类——全库统一成「越高越好」之后这套分类已无意义，且随 2026-09-13
-# 删除 env_* / imm_static 时已拆掉一半。2026-09-14 基准重建时一并移除。
-# 基准里也不再存 ai / net 等存死维度值，见 server.py 的 bench 计算。
+# 下面这张表是「原始指标中位」的唯一存放处：**不存任何五维分**，五维分一律由
+# server.py 在运行时用当前公式算（见 server 的 bench 计算）。公式一改，基准口径
+# 自动跟着改，不会留下「用旧公式算死的数」。
+#
+# 键名是匿名代号 B01–B24，与具体书目的对应关系不入库（见 README「基准从哪来」）。
+# 重建用 `tools/bench_build.py`——代号按**内容指纹**认领，不按文件名或排序位置。
+#
+# 旧版的 `BENCH_KEYS` / `BENCH_NEG` / `BENCH_POS` 三个常量已于 2026-09-14 随基准
+# 重建移除：`BENCH_KEYS` 在 `check()` 删除后已无任何调用者，`BENCH_NEG` /
+# `BENCH_POS` 是「越低越好 / 越高越好」的方向分类——全库统一成「越高越好」后
+# 这套分类已无意义（方向由 good() 的阈值对自带），且随 2026-09-13 删除
+# env_* / imm_static 时已拆掉一半。
 BENCH_LABEL = {
+    # 五维的中文名（不参与 LABEL 取值，留作维度文档）。
     "real": "真人感", "human": "人味", "imm": "代入感", "rhythm": "节奏",
     "syn": "句法",
-    "rev": "反转句/千字", "simile": "明喻/千字", "head": "句首集中",
+    # 逐项中文名。**只保留在展示清单（server.SHOW）里的项**——
+    # `head`（已删）与 `act` / `ttr` / `net_short`（退出打分、只算原始值备查）
+    # 的条目 2026-09-14 一并清掉：LABEL 只按 SHOW 取值，留着永不出现。
+    "rev": "反转句/千字", "simile": "明喻/千字",
     "dash": "破折号收束", "bold": "正文加粗", "cv": "句长CV",
     "dem_lit": "古典指示词",
     "question": "疑问句",
     "emo_type": "情绪词种类",
     "imm_perc": "感知/千字", "imm_cog": "认知反应", "imm_soma": "身体感受",
     "surprise": "意外/示证", "touch_temp": "触觉温度",
-    "dial_sent": "对话句长", "net_oral": "口语/千字", "net_short": "短句占比",
+    "dial_sent": "对话句长", "net_oral": "口语/千字",
     "sent_p90": "长句p90", "sent_p10": "短句p10", "para_cv": "段长CV",
-    "lit": "书面虚词", "act": "动作密度", "emo": "情绪外显",
+    "lit": "书面虚词", "emo": "情绪外显",
     "vague": "AI模糊语", "para_med": "段长中位", "short_run": "连续短段",
     "tell": "讲出来", "nego": "否定-破折号纠正", "enum": "罗列",
     "sent_den": "句/千字", "tail": "段尾金句", "short": "单行短段",
-    "ttr": "词汇多样性",
     "pron3": "第三人称代词", "pron_start": "代词起句率", "sent_med": "句长中位",
     "g_turn": "转折连词", "conn_lit": "书面连接词",
 }
@@ -539,9 +500,14 @@ def _wavg(s, w):
 
     权重表只表达相对重要性，不必凑成 1.0；删掉指标时也不用重新配平。
     输入是 0–10 的逐项分，输出必然落在 0–10。
+
+    逐项分为 None 的项**直接跳过、权重不参与归一**（2026-09-14）：None 表示
+    「该项在本章不适用」（如无对话的章的 dial_sent）。按 0 计入等于把它当成
+    「写得最差」扣分，按满分计入又是虚高——跳过才是中性。
     """
-    tot = sum(w.values())
-    return clamp(sum(s[k] * w[k] for k in w) / tot) if tot else 0.0
+    ks = [k for k in w if s.get(k) is not None]
+    tot = sum(w[k] for k in ks)
+    return clamp(sum(s[k] * w[k] for k in ks) / tot) if tot else 0.0
 
 
 def good(v, target, over):
@@ -551,7 +517,11 @@ def good(v, target, over):
     target 可以大于也可以小于 over（两种方向都行），公式自带方向，
     因此不需要任何额外的「越低越好 / 越高越好」方向表。
     旧版「AI 味」用的正是它的补数 10 − good(v)，两者数值严格互补。
+
+    v 为 None（该项在本章不适用）时返回 None，交给 _wavg() 跳过。
     """
+    if v is None:
+        return None
     if over == target:
         return 0.0
     return clamp((over - v) / (over - target) * 10)
@@ -719,8 +689,12 @@ def net_stats(body):
                     qsents.append(len(x))
     short = [s for s in ss if len(s) <= 10]
     k = max(len(re.sub(r"\s", "", body)), 1) / 1000.0
+    # 无对话的章返回 None 而**不是 0**（2026-09-14 改）。取 0 会让叙述型章节
+    # 被系统性判成「AI 对话写法」——达标线 15.48，0 分等于该项整项扣光。
+    # None 表示「本章不适用」，_wavg() 跳过它并按剩余权重归一，既不奖也不罚。
+    # item_score() / server.med() / audit.py 均已支持 None。
     return {
-        "dial_sent": sum(qsents) / max(len(qsents), 1),
+        "dial_sent": (sum(qsents) / len(qsents)) if qsents else None,
         "net_oral": len(ORAL.findall(body)) / k,
         "net_short": len(short) / max(len(ss), 1),
     }
@@ -860,8 +834,6 @@ def metrics(body):
     cv = (statistics.pstdev(lens) / statistics.mean(lens)) if len(lens) > 2 else 0.0
     tg = tail_gold_hits(body)
     short = [p for p in ps if len(re.sub(r"\s", "", p)) <= 12]
-    heads = collections.Counter(HEADWORD.findall(re.sub(r"[*>#]", "", body)))
-    top = (heads.most_common(1)[0][1] / max(len(ss), 1)) if heads else 0.0
     out = {
         "chars": n, "cv": cv,
         "rev": len(REV.findall(body)) / k,
@@ -870,7 +842,6 @@ def metrics(body):
         "simile": len(SIMILE.findall(body)) / k,
         "short": len(short) / max(len(ps), 1),
         "dash": len(DASH_END.findall(body)) / k,
-        "head": top,
         "vague": len(VAGUE.findall(body)) / k,
         "sent_den": len(ss) / k,
         "pron3": len(PRON3.findall(body)) / k,
@@ -905,7 +876,6 @@ def metrics(body):
         # 同轮全灭——章级中位贴 0，稀疏词表过不了这道门，别再试同类。
         "emo_type": len(set(EMO.findall(body))) / max(len(ss), 1) * 100.0,
         "comma_in": body.count("\uff0c") / k,
-        "_tail_hits": tg,
     }
     out.update(imm_stats(body))
     out.update(net_stats(body))
@@ -980,17 +950,7 @@ def score_total(d):
     return clamp(sum(d[k] * w for k, w in DIM_WEIGHTS.items()))
 
 
-def bar(v, width=12):
-    f = int(round(clamp(v, 0, 10) / 10 * width))
-    return "\u2588" * f + "\u00b7" * (width - f)
-
-
-def grade(t):
-    return ("干净" if t < 2.5 else "轻微" if t < 5.0
-            else "偏重" if t < 7.0 else "很重")
-
-
-def grade_imm(v):
-    return ("强" if v >= 7.0 else "中" if v >= 5.0
-            else "弱" if v >= 3.0 else "差")
+# `bar()`（终端进度条）/ `grade()`（违规轻重分档）/ `grade_imm()`（代入感强弱分档）
+# 三个格式化辅助函数**已删除**（2026-09-14）：全库零调用者，是旧命令行输出时代的遗留。
+# 展示层已全部搬到 `server.py` + `static/`，评分核心不再产出任何给人看的字符串。
 
