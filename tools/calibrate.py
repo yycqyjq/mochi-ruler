@@ -10,7 +10,9 @@
     python3 tools/calibrate.py --human ... --ai ... --items redupl,emo --k 0.85
 
     --human   真人语料（目录或文件），必填
-    --ai      AI 语料（目录或文件），可给多个，全部并成一个 AI 组
+    --ai      AI 语料（目录或文件），可给多个，全部并成一个 AI 组。
+              **多个路径可以空格连写（`--ai A B`），也可以重复传（`--ai A --ai B`）**；
+              早期只支持前者，重复传会静默只留最后一个路径，AI 组凭空缩水。
     --items   只标定这几个指标（逗号分隔），默认全部打分项
     --k       达标线插值系数，默认 0.85
     --per     每本最多抽多少章（全书等距），默认 100——**必须与
@@ -52,15 +54,6 @@ import qc_core as q                         # noqa: E402
 SHOW = audit.SHOW
 
 
-def keep_fingerprinted(paths):
-    """只留下内容指纹登记过的文件（真人标杆 24 本），并报出被剔掉几个。"""
-    keep = [f for f in paths if bench_build.fingerprint(f) in bench_build.FP2CODE]
-    drop = len(paths) - len(keep)
-    if drop:
-        print(f"  [--fp] 剔掉 {drop} 本未登记 / 不可用的书，保留 {len(keep)} 本")
-    return keep
-
-
 def per_book(paths, cap):
     """每本抽 ≤cap 章并算好 metrics，返回 [(文件名, [metrics, ...])]。
 
@@ -82,7 +75,8 @@ def per_book(paths, cap):
 def main():
     ap = argparse.ArgumentParser(description="墨尺阈值标定")
     ap.add_argument("--human", required=True, help="真人语料（目录或文件）")
-    ap.add_argument("--ai", nargs="+", required=True, help="AI 语料，可多个")
+    ap.add_argument("--ai", nargs="+", action="extend", required=True,
+                    help="AI 语料，可多个（`--ai A B` 与 `--ai A --ai B` 等价）")
     ap.add_argument("--items", help="只标定这些指标，逗号分隔")
     ap.add_argument("--k", type=float, default=0.85, help="达标线插值系数")
     ap.add_argument("--per", type=int, default=100, help="每本最多抽多少章")
@@ -94,7 +88,9 @@ def main():
     hf = audit.load([a.human])
     af = audit.load(a.ai)
     if a.fp:
-        hf = keep_fingerprinted(hf)
+        hf, dropped = bench_build.keep_known(hf)
+        print(f"  [--fp] 剔掉 {len(dropped)} 本未登记 / 不可用的书，"
+              f"保留 {len(hf)} 本")
     if not hf or not af:
         sys.exit("真人组与 AI 组都至少要有一个文件")
 
@@ -103,6 +99,13 @@ def main():
 
     print(f"真人 {len(hf)} 个文件　AI {len(af)} 个文件　"
           f"k={a.k}　每本 ≤{a.per} 章")
+    # 防呆：per 一变，真人中位就变，建议阈值跟着变。用非标准 per 标出来的线
+    # 不能直接写回 qc_core（会和基准、和其余指标的线不在同一口径上）。
+    if a.per != bench_build.PERBOOK:
+        print(f"  ⚠ --per={a.per} ≠ bench_build.PERBOOK={bench_build.PERBOOK}："
+              f"下面算出的「真人跨本中位」与 qc_core 阈值表里的口径不一致，"
+              f"建议值仅供参考、**不要直接写回**。"
+              f"（实测 redupl：per=20 → 5.834，per=100 → 6.047）")
 
     # 样本：真人按本算中位（每本只算一次 metrics），AI 全部块汇总
     HB = per_book(hf, a.per)
