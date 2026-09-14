@@ -122,17 +122,17 @@ def analyze(text, name=''):
     summary['metrics'] = {k: med([c['metrics'][k] for c in out]) for k in SHOW}
     summary['items'] = {k: med([c['items'][k] for c in out]) for k in SHOW}
 
-    # 标杆基准（预置基准中位，口径与上面一致）。真人感 = 10 − 旧「AI 味」。
-    bench = {
-        'real': 10 - med([q.BENCHMARKS[b]['ai'] for b in q.BENCHMARKS]),
-        'human': med([q.BENCHMARKS[b]['human'] for b in q.BENCHMARKS]),
-        'imm': med([q.BENCHMARKS[b]['imm'] for b in q.BENCHMARKS]),
-        'rhy': med([q.BENCHMARKS[b]['rhythm'] for b in q.BENCHMARKS]),
-        'syn': med([q.BENCHMARKS[b]['syn'] for b in q.BENCHMARKS]),
-    }
+    # 标杆基准。BENCHMARKS 里只存原始指标中位，**五维分在运行时用当前公式
+    # 算**——旧版存的是六个字面量死数（ai/human/imm/net/rhythm/syn），公式一改
+    # 就与新口径脱节（net 撤编、g_turn 入库时都踩过）。现在口径永远自洽，
+    # 新增指标也自动有基准，不需要回头补基准表。
+    bench = {}
+    for d, fn in (('real', q.score_real), ('human', q.score_human),
+                  ('imm', q.score_imm), ('rhy', q.score_rhy),
+                  ('syn', q.score_syn)):
+        bench[d] = med([fn(q.BENCHMARKS[b])[1] for b in q.BENCHMARKS])
     bench['total'] = q.score_total(bench)
-    # 新增指标在冻结基准里没有存值（基准是一次性算定的，不能就地补），
-    # 这类键一律给 None 让前端显示「—」，而不是拿 0 冒充标杆原始值。
+
     def _bmed(k):
         vs = [q.BENCHMARKS[b][k] for b in q.BENCHMARKS if k in q.BENCHMARKS[b]]
         return med(vs) if vs else None
