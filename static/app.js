@@ -155,11 +155,11 @@ function renderScores(d) {
 const DIM_ITEMS_FALLBACK = {
   real: ['vague', 'nego', 'dash', 'rev', 'enum', 'simile', 'sent_den',
     'para_med', 'short_run', 'tail', 'bold', 'dede', 'isde', 'onomat',
-    'space', 'short', 'head', 'tell', 'cv'],
+    'space', 'short', 'head', 'tell', 'cv', 'dem_lit'],
   human: ['emo', 'net_oral', 'net_dial', 'exclaim', 'redupl'],
-  imm: ['imm_cog', 'imm_perc', 'imm_soma', 'imm_lim', 'breath'],
+  imm: ['imm_cog', 'imm_perc', 'imm_soma', 'breath', 'surprise', 'touch_temp'],
   rhy: ['sent_p90', 'sent_p10', 'comma_in', 'lit', 'para_cv'],
-  syn: ['pron3', 'pron_start', 'sent_med', 'g_turn'],
+  syn: ['pron3', 'pron_start', 'sent_med', 'g_turn', 'conn_lit'],
 };
 
 // 后端带的 dimitems 直接取自权重表，是权威值；缺失或为空就用前端兜底。
@@ -169,9 +169,10 @@ function dimItemsOf(d) {
 }
 
 // 逐项对比：每项一个 0–10 分，越高越好，不需要方向表。
-// 悬停指标名可见该指标的原始值。选中维度时只显示这些维度覆盖的指标；
-// 万一出现不属于任何维度的指标（无权重又不在筛选范围），始终保留，
-// 否则一筛选就再也看不到了。
+// 每项标签旁有一个 ? —— 悬停 / 聚焦 / 点击可看该指标的「口径说明 + 原始值」。
+// 这里把气泡内容存进 TIPDATA，? 上只放指标键，避免把长文本塞进 data 属性。
+let TIPDATA = {};
+
 function renderMetrics(d) {
   const s = d.summary;
   const dimitems = dimItemsOf(d);
@@ -188,13 +189,32 @@ function renderMetrics(d) {
     : `（${keys.length} 项 · 满分 10）`;
   let rows = '<div class="mrow head"><div class="n">指标</div>' +
     '<div class="you">你的分</div><div class="bench">标杆</div><div class="tag">判定</div></div>';
+  TIPDATA = {};
   for (const k of keys) {
     const you = s.items[k], bench = d.bench.items[k];
     const raw = s.metrics[k], rawB = d.bench.metrics[k];
     const j = itemTag(you, bench);
     const cls = (you === null || you === undefined) ? '' : scCls(you);
+    const desc = (d.desc && d.desc[k]) || '';
+    const dir = (d.rawdir && d.rawdir[k]) || '';
+    if (desc) {
+      TIPDATA[k] = {
+        name: d.label[k] || k,
+        desc,
+        raw: fmt(raw),
+        benchRaw: fmt(rawB),
+        dir,
+      };
+    }
+    // 缺口径说明时不渲染 ?，避免出现一个点开是空的图标。
+    // 用原生 <button> 而不是带 role="button" 的 span：按键 Enter / Space 只有
+    // 原生按钮才会合成 click 事件，span 得自己写键盘处理。
+    const qi = desc
+      ? `<button type="button" class="qi" data-k="${k}"` +
+        ` aria-label="${d.label[k] || k} 的口径说明">?</button>`
+      : '';
     rows += `<div class="mrow ${j.cls}">
-      <div class="n" title="原始值　你 ${fmt(raw)}　标杆 ${fmt(rawB)}">${d.label[k]}</div>
+      <div class="n"><span class="nlabel">${d.label[k]}</span>${qi}</div>
       <div class="you ${cls}">${num(you)}</div>
       <div class="bench">${num(bench)}</div>
       <div class="tag">${j.tag}</div>
@@ -202,6 +222,76 @@ function renderMetrics(d) {
   }
   $('#metrics').innerHTML = rows;
 }
+
+/* ? 的口径说明气泡 ------------------------------------------------------
+   用 position:fixed 自绘，而不是原生 title：原生 title 有约 1s 延迟、不能换行、
+   跨浏览器不一致，且在触摸屏上完全不出现。悬停 / 键盘聚焦 / 触屏点按三种触发，
+   覆盖鼠标、键盘与触屏。 */
+let tipTimer = null;
+let tipAnchor = null;   // 当前气泡挂在哪个 ? 上，滚动时要靠它重算位置
+
+function tipEl() { return $('#tip'); }
+
+// 按锚点矩形摆位：默认在上方，上方不够就翻到下方，左右贴边则收进视口内。
+function positionTip(qi) {
+  const el = tipEl();
+  el.style.left = '-9999px';
+  el.style.top = '0px';
+  const a = qi.getBoundingClientRect();
+  const b = el.getBoundingClientRect();
+  const M = 8;
+  let left = Math.min(a.left, window.innerWidth - M - b.width);
+  if (left < M) left = M;
+  let top = a.top - b.height - 8;
+  if (top < M) top = a.bottom + 8;
+  el.style.left = `${Math.round(left)}px`;
+  el.style.top = `${Math.round(top)}px`;
+}
+
+function showTip(qi) {
+  const info = TIPDATA[qi.dataset.k];
+  if (!info) return;
+  clearTimeout(tipTimer);
+  const el = tipEl();
+  el.textContent = '';
+  const add = (cls, text) => {
+    const n = document.createElement('div');
+    n.className = cls;
+    n.textContent = text;
+    el.appendChild(n);
+  };
+  add('tip-title', info.name);
+  add('tip-desc', info.desc);
+  add('tip-raw', `原始值　你 ${info.raw}　标杆 ${info.benchRaw}` +
+    (info.dir ? `　·　${info.dir}` : ''));
+  el.dataset.k = qi.dataset.k;
+  tipAnchor = qi;
+  el.hidden = false;
+  positionTip(qi);   // 先显示再量尺寸，避免在旧位置闪一下
+}
+
+function hideTip() {
+  clearTimeout(tipTimer);
+  const el = tipEl();
+  el.hidden = true;
+  delete el.dataset.k;
+  tipAnchor = null;
+}
+
+// 给鼠标留一点余量：从 ? 移向气泡时不要立刻消失。
+function scheduleHide() { clearTimeout(tipTimer); tipTimer = setTimeout(hideTip, 140); }
+
+// 滚动 / 改变窗口大小时**重新定位**而不是关闭：键盘 Tab 切换会把元素滚入视口，
+// 若在这里直接关闭，气泡会「刚弹出就被自己滚没」。锚点已滚出视口才收起。
+function repositionTip() {
+  const el = tipEl();
+  if (el.hidden || !tipAnchor) return;
+  if (!tipAnchor.isConnected) return hideTip();
+  const a = tipAnchor.getBoundingClientRect();
+  if (a.bottom < 0 || a.top > window.innerHeight) return hideTip();
+  positionTip(tipAnchor);
+}
+
 
 function render(d) {
   $('#empty').hidden = true;
@@ -485,6 +575,65 @@ document.addEventListener('DOMContentLoaded', () => {
     renderScores(LAST);
     renderMetrics(LAST);
   });
+  // ? 的口径说明：鼠标走悬停、键盘走聚焦、触屏走点按，按指针类型分流。
+  //
+  // 用 pointerover / pointerout（会冒泡、且带 pointerType），**不用** mouseover /
+  // mouseout：触屏点按后浏览器会补发一整套兼容鼠标事件，其中末尾那个 mouseout
+  // 会把刚点开的气泡立刻关掉，表现为「点了没反应」。
+  const qiOf = e => (e.target.closest ? e.target.closest('.qi') : null);
+  $('#metrics').addEventListener('pointerover', e => {
+    if (e.pointerType === 'touch') return;
+    const qi = qiOf(e);
+    if (qi) showTip(qi);
+  });
+  $('#metrics').addEventListener('pointerout', e => {
+    if (e.pointerType === 'touch') return;
+    const qi = qiOf(e);
+    if (!qi) return;
+    if (e.relatedTarget && qi.contains(e.relatedTarget)) return;
+    scheduleHide();
+  });
+  $('#metrics').addEventListener('focusin', e => {
+    const qi = qiOf(e);
+    if (qi) showTip(qi);
+  });
+  $('#metrics').addEventListener('focusout', e => {
+    if (qiOf(e)) scheduleHide();
+  });
+  // 键盘敲 Enter / Space：原生 <button> 会合成 click，其 event.detail 恒为 0。
+  // 用它跟鼠标点击区分开——鼠标点击不参与（鼠标走 hover）。
+  // 也补上「Esc 收起后元素仍是聚焦态、focusin 不会再触发」这个缺口。
+  $('#metrics').addEventListener('click', e => {
+    if (e.detail !== 0) return;
+    const qi = qiOf(e);
+    if (!qi) return;
+    e.preventDefault();
+    if (tipEl().dataset.k === qi.dataset.k && !tipEl().hidden) hideTip();
+    else showTip(qi);
+  });
+  // 触屏：同一 ? 再点一次收起。鼠标与键盘不参与（分别是 hover / focus）。
+  $('#metrics').addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'touch') return;
+    const qi = qiOf(e);
+    if (!qi) return;
+    e.preventDefault();
+    if (tipEl().dataset.k === qi.dataset.k && !tipEl().hidden) hideTip();
+    else showTip(qi);
+  });
+  // 触屏点别处收起。
+  document.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'touch') return;
+    const el = tipEl();
+    if (el.hidden || !e.target.closest) return;
+    if (e.target.closest('.qi') || e.target.closest('#tip')) return;
+    hideTip();
+  });
+  // 气泡本身可悬停，移进去时不要消失。
+  tipEl().addEventListener('pointerenter', () => clearTimeout(tipTimer));
+  tipEl().addEventListener('pointerleave', scheduleHide);
+  // 滚动 / 改变窗口大小：重新定位，而不是关闭（Tab 切换会滚动视口）。
+  window.addEventListener('scroll', repositionTip, true);
+  window.addEventListener('resize', repositionTip);
   $('#demo').onclick = () => { loadedText = null; loadedFolder = ''; loadedMeta = null; $('#sourcebar').hidden = true; $('#text').value = DEMO; };
   $('#clear').onclick = () => {
     loadedText = null; loadedFolder = ''; loadedMeta = null; $('#sourcebar').hidden = true;
@@ -514,7 +663,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape') closePopup();
+    if (e.key === 'Escape') { closePopup(); hideTip(); }
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') run();
   });
 });

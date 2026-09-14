@@ -14,10 +14,10 @@ qc_core.py — 网文「真人感 / 人味 / 代入感 / 节奏 / 句法」体�
          真人感  越高越好（= 10 − 旧「AI 味」：反转句 / 模糊语 / 破折号 / 加粗 …）
          人味    越高越好（口语 / 情绪外显 / 叠词）——**低 AI 味 ≠ 有人味**，
                  干巴巴的文本可能既没 AI 痕迹也没人味，两者互补
-         代入感  越高越好（感知 / 认知 / 身体 / 受限）
+         代入感  越高越好（感知 / 认知 / 身体 / 呼吸 / 意外 / 触觉）
          节奏    越高越好（长句 p90 / 短句 p10 / 段长 CV / 书面虚词）
          句法    越高越好（第三人称代词密度 / 代词起句率 / 句长中位 /
-                 转折连词）——2026-09-13 新增。真人长篇与 AI 文本实测，
+                 转折连词 / 书面连接词）——2026-09-13 新增。真人长篇与 AI 文本实测，
                  这四项是本工具里区分度最高的一组（代词密度、代词起句、
                  转折连词三项 AUC ≥ 0.98，两边几乎不重叠）；而人工罗列的
                  「AI 俗套词表」（心中一凛 / 嘴角勾起 / 不禁 …）实测两端
@@ -107,10 +107,6 @@ SOMA = re.compile(
     r"疼|痛|麻|痒|酸|冷(?!静|淡|清)|热(?!闹|情|爱|衷)|沉(?!默|淀|思|睡)|"
     r"软|硬|喘|抖|颤|汗|心跳|恶心|发花|无力|僵|涨|闷|饿|渴|困(?!难|境|住)"
 )
-LIM = re.compile(
-    r"只能|看不清|看不出|听不清|听不出|够不着|够不到|辨不出|分不清|"
-    r"分不出|认不出|说不清|想不起|不知道是|看不全"
-)
 ORAL = re.compile(r"吧|啊|呢|嘛|啥|咋|甭|呗|哟|嘿|哼|哎|唉|啧|瞧瞧|可不是")
 LIT = re.compile(r"其|之|乃|遂|亦|矣|乎|者|所|则|而|哉|焉|尔|夫")
 ACT = re.compile(
@@ -136,6 +132,44 @@ ISDE = re.compile(r"是[^，。！？]{1,12}的[。！？]")
 ONOMAT = re.compile(r"啪嗒|哗啦|咕噜|咔嚓|咚|嗒|唰|嗡|吱|哐|砰|嗖")
 SPACE = re.compile(r"左边|右边|上边|下边|前头|后头|上头|底下|里头|外头|跟前")
 BREATH = re.compile(r"喘|呼吸|心跳|屏住|憋|胸口|发闷")
+
+# 2026-09-14 新增三项原始指标（真人 24 本 vs AI 组实测，每千字）。
+#
+# SURPRISE  意外 / 示证：人物的惊讶与「得知」从叙述里露出来，是内聚焦
+#           （自由间接引语）最直接的标记。真人 0.49 → AI 0.00，**真人高**。
+#           整组 AI 文件的最大值 0.15 都够不着真人中位。与 imm_cog 只相关
+#           0.20，是独立轴，不是认知反应的回声。
+# CONN_LIT  书面体连接词：裸「但」（非「但是」）/ 然而 / 因此 / 从而 / 故 /
+#           遂 / 乃。真人 1.53 → AI 4.36，**AI 高**，故阈值必须反向
+#           （达标 < 超标）。与句法维 g_turn 构成一对语体寄存器变体：
+#           同一个语义槽，真人选口语（但是/可是/不过），AI 选书面（但）。
+# TOUCH_TEMP 触觉温度词。真人 0.47 → AI 1.23，**AI 高**，阈值反向。
+#           与 imm_perc / imm_soma 同族——「外部可观察」维度，AI 写得更多。
+#
+# 三项都通过了「每千字 → 残差」终审：控制句长后 surprise 残差分离 0.89、
+# conn_lit 0.81，不是短句化的回声。详见 .workbuddy/notes/ 的挖掘报告。
+SURPRISE = re.compile(r"居然|竟然|不料|谁知|怎料|谁知道|没想到|竟是")
+CONN_LIT = re.compile(r"(?<!不)但(?!是)|然而|因此|从而|故|遂|乃")
+TOUCH_TEMP = re.compile(r"凉|烫|暖|冰冷|发冷|发热|湿|干|粗糙|光滑|刺痛|发烫|温热|冰凉")
+
+# 2026-09-14 新增第 41 项：古典指示词（真人感维）。
+#
+# 真人 1.40 / AI 0.00（每千字）——AI 组 129 块里几乎一个都不出现，中位天然是 0。
+# 分离度 0.85，控制句长后残差 0.92（每千字）/ 0.72（每百句）；与其余 40 项
+# 最大相关仅 0.39（最近的 lit），是独立轴，不是某个已有指标的回声。
+#
+# ⚠ 只收「此 / 彼」两个字，**不要**展开成 此|彼|此时|此刻|此处|… ——
+# re.findall 从左到右扫描且「此」在前，写长的候选全是**死分支**，计数一模一样。
+#
+# ⚠ 不要把「该」并进来。该 在真人样本里 66% 是「应该」（2279/3434），
+# 另有 不该 / 活该 / 该死 等一堆同形词。并进来既污染语义又丢分离度：
+# 实测 sep 0.85 → 0.81，AI 中位从 0.00 抬到 0.26。
+#
+# ⚠ 「此」会命中 因此 / 如此 / 从此 / 在此 这类连词，实测**不必排除**——
+# 这些用法在真人样本里同样远多于 AI（如此 0.423 vs 0.004 每千字），与信号同向；
+# 强行加否定断言反而把分离度从 0.85 压到 0.72。
+DEM_LIT = re.compile(r"此|彼")
+
 EXCLAIM = re.compile(r"！")
 REDUPL = re.compile(r"(.)\1(?![一-龥])")
 TELL = re.compile(r"他知道|她知道|他明白|她明白|他意识到|她意识到|"
@@ -186,6 +220,9 @@ GOOD_BAD = {
     "isde":     (0.50, 1.50),
     "onomat":   (0.30, 1.00),
     "space":    (0.20, 1.20),
+    # 古典指示词：达标记 = 真人中位 1.40 → 10 分，超标 = AI 中位 0.00 → 0 分。
+    # target > over，故 good() 判为「越高越好」——用得多才像真人。
+    "dem_lit":  (1.40, 0.00),
 }
 CV_RANGE = (0.60, 0.42)
 # 权重只需表达「相对重要性」，不必凑成 1.0 —— 各 score_* 用 _wavg() 做归一化。
@@ -195,22 +232,60 @@ WEIGHTS = {
     "vague": 0.10, "para_med": 0.04, "short_run": 0.02,
     "tell": 0.02, "nego": 0.10, "enum": 0.04, "sent_den": 0.10,
     "dede": 0.03, "isde": 0.03, "onomat": 0.02, "space": 0.02,
+    # dem_lit 权重 0.06：分离度 0.87→去掉「该」后 0.85，在真人感 20 项里排第 7，
+    # 与 sep 0.91 的 simile 同档（0.06）。
+    "dem_lit": 0.06,
 }
 
-IMM_RANGE = {
-    "imm_perc": (0.80, 2.00),
-    "imm_soma": (1.00, 2.50),
-}
-
+# 代入感维（2026-09-14 重定标）。
+#
+# 旧阈值有两个独立故障，实测（真人 24 本 / AI 70 文件中位，每千字）：
+#   breath    真人 0.00 / AI 0.76  越低越好  分离 0.82  ← 方向与阈值本来就对
+#   imm_perc  真人 1.29 / AI 1.82  越低越好  分离 0.36  ← 旧「区间型 [0.8,2.0]」
+#   imm_soma  真人 1.63 / AI 2.52  越低越好  分离 0.30     把两边都包进区间，
+#                                                         真人 AI 双双满分 → 零区分
+#   imm_cog   真人 0.82 / AI 0.43  **越高越好** 0.36  ← 方向对，但达标 2.0 是
+#                                                        人中位 0.86 的 2.3 倍，
+#                                                        真人只拿 1.84 分
+# 修法：一律取「真人中位 → 10 分，AI 中位 → 0 分」。good() 自带方向，
+# 故 target 大于或小于 over 都对，不需要方向表。
+# 权重 ∝ 实测分离度（breath 0.82 / imm_perc 0.36 / imm_cog 0.36 / imm_soma 0.30），
+# _wavg() 会自动归一。重定标后：标杆 8.20，AI 组 2.46，逐本分离 0.95。
+#
+# `imm_lim`（受限感知：只能 / 看不清 / 说不清 …）**已整体删除**（2026-09-14）。
+# 它先退出打分：真人中位 0.27 vs AI 中位 0.26，章级分离只有 0.11–0.16，且判定
+# 带宽比数据离散度窄一个数量级——刀锋阈值，换文本必随机翻分。随后把展示位、
+# 原始值、基准键、标签一并删除，理由有三：
+#   1. 它不参与任何判据，留在计分表里只会以「—」的形式反复被误读成故障；
+#   2. 24 本基准各留一个用不到的键，是 24 份死重；
+#   3. 它的原始值也不再出货（server 只按 SHOW 取指标），留着就是纯空转。
+# `LIM` 正则随之删除。若要复活它，须先证明有区分度（分离度 ≥0.7）再走
+# 「加新指标」流程（见 .workbuddy/memory/MEMORY.md 的标准流程）。
+#
+# 2026-09-14 扩编：新建的「内聚焦 / 外视角」理论（真人把人物的评价、意外、
+# 当下感混进叙述，AI 只做外部观察）在这一维再落两项——
+#   surprise   意外/示证（居然/竟然/不料/谁知/没想到）。真人 0.49 → AI 0.00，
+#              章级分离 0.70，控制句长后残差 0.88，与 imm_cog 只相关 0.19。
+#              这是「人物认知状态外露」的直接标记，与 imm_cog 同侧、独立。
+#   touch_temp 触觉温度词（凉/烫/冰凉/刺痛…）。真人 0.47 → AI 1.23，**AI 高**。
+#              与 imm_perc / imm_soma 同族，属「外部可观察」维度，阈值反向。
+#              章级分离 0.54、残差 0.53，是本批三项里最弱的一项；真人零值率
+#              26%（3 本标杆的逐本中位为 0），故权重给得比 surprise 低。
+# 加后 imm 标杆 8.11 → 8.64，AI 组中位 2.39 → 2.14，两组分离 0.911 → 0.989
+# 且两群完全不重叠（真人 P05 5.84 > AI P95 5.36）。
 IMM_GOOD_BAD = {
-    "breath":     (0.20, 0.90),
-    "imm_perc":   (3.0, 1.0),
-    "imm_cog":    (2.0, 0.6),
-    "imm_soma":   (2.5, 0.8),
-    "imm_lim":    (0.5, 0.1),
+    "breath":     (0.00, 0.76),   # 越低越好
+    "imm_perc":   (1.29, 1.82),   # 越低越好
+    "imm_soma":   (1.63, 2.52),   # 越低越好
+    "imm_cog":    (0.82, 0.43),   # 越高越好（真人高于 AI）
+    "surprise":   (0.49, 0.00),   # 越高越好（真人 0.49 / AI 0.00）
+    "touch_temp": (0.47, 1.23),   # 越低越好（AI 高：真人 0.47 / AI 1.23）
 }
-IMM_WEIGHTS = {"imm_perc": 0.10, "imm_cog": 0.40, "imm_soma": 0.10,
-               "imm_lim": 0.15, "breath": 0.10}
+# 权重 ∝ 实测章级分离度：breath 0.82 / surprise 0.70 / touch_temp 0.54 /
+# imm_cog 0.36 / imm_perc 0.36 / imm_soma 0.30。_wavg() 自动归一，
+# 所以新增两项会按比例稀释原有四项，不必重新配平。
+IMM_WEIGHTS = {"breath": 0.82, "imm_cog": 0.36, "imm_perc": 0.36,
+               "imm_soma": 0.30, "surprise": 0.70, "touch_temp": 0.54}
 
 HUMAN_GOOD_BAD = {
     "net_oral": (1.20, 0.40),
@@ -265,11 +340,17 @@ SYN_GOOD_BAD = {
     "pron_start": (0.045, 0.080),
     "sent_med":   (26.0,  15.0),
     "g_turn":     (2.50,  0.20),
+    # 2026-09-14 新增：书面体连接词（裸「但」/然而/因此/从而/故/遂/乃）。
+    # 真人 1.59 → AI 4.36，**AI 高**，故阈值反向写成 达标 < 超标。
+    # 与 g_turn 是一对语体寄存器变体——同一个语义槽，真人选口语、AI 选书面。
+    "conn_lit":   (1.59,  4.36),
 }
 # 权重只表达相对重要性，_wavg() 会按权重和归一化，不必凑成 1.0。
 # g_turn 与 pron3 / pron_start 同为「完全不重叠」级信号，给同级权重。
+# conn_lit 与 g_turn 是同一对寄存器变体（口语 vs 书面），给同级权重；
+# 两者实测只相关 0.10，不是重复计分，且 conn_lit 章级分离 0.80、残差 0.80。
 SYN_WEIGHTS = {"pron3": 0.45, "pron_start": 0.30, "sent_med": 0.25,
-               "g_turn": 0.30}
+               "g_turn": 0.30, "conn_lit": 0.30}
 
 CHECK = [
     # (指标, 方向, 达标线, 中文名, 说明)　方向 min = 越高越好，max = 越低越好
@@ -285,9 +366,9 @@ CHECK = [
     ("sent_p90", "min", 60.0, "长句p90", "写不出长句"),
     ("real", "min", 8.50, "真人感(分)", "0–10，越高越不像AI"),
     ("human", "min", 6.00, "人味(分)", "口语/情绪/叠词"),
-    ("imm", "min", 5.00, "代入感(分)", "感知/身体/受限"),
+    ("imm", "min", 5.00, "代入感(分)", "感知/认知/身体/意外"),
     ("rhythm", "min", 7.00, "节奏(分)", "长短句张力"),
-    ("syn", "min", 7.00, "句法(分)", "代词密度/起句/句长"),
+    ("syn", "min", 7.00, "句法(分)", "代词密度/起句/句长/连接词"),
     ("total", "min", 7.50, "总分(分)", "五维等权"),
 ]
 
@@ -357,30 +438,30 @@ def check(files):
 BENCHMARKS = {
     # 键名为匿名代号，具体书目不入库。字段只有原始指标中位 + 抽样章数 _n，
     # 五维分不存（运行时算），新增指标自动获得基准。
-    "B01": {'_n': 100, 'vague': 0.3693, 'nego': 0.0, 'dash': 0.0, 'rev': 0.3287, 'enum': 0.0, 'simile': 0.7452, 'sent_den': 23.7371, 'para_med': 58.0, 'short_run': 1.0, 'tail': 0.0235, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0, 'onomat': 0.0, 'space': 0.0, 'short': 0.063, 'head': 0.0161, 'tell': 0.0, 'cv': 0.6888, 'sent_p90': 79.5, 'sent_p10': 6.0, 'comma_in': 88.8797, 'lit': 15.1581, 'para_cv': 0.5025, 'emo': 4.7988, 'net_oral': 1.098, 'net_dial': 0.315, 'exclaim': 6.8249, 'redupl': 8.9121, 'imm_cog': 1.1527, 'imm_perc': 2.3422, 'imm_soma': 2.3063, 'imm_lim': 0.354, 'breath': 0.3752, 'pron3': 9.9561, 'pron_start': 0.0216, 'sent_med': 39.5, 'g_turn': 1.7716},
-    "B02": {'_n': 100, 'vague': 0.2159, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.0, 'simile': 0.3472, 'sent_den': 22.7724, 'para_med': 49.75, 'short_run': 1.0, 'tail': 0.0312, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0, 'onomat': 0.0, 'space': 0.0, 'short': 0.037, 'head': 0.0152, 'tell': 0.0, 'cv': 0.5506, 'sent_p90': 73.5, 'sent_p10': 14.0, 'comma_in': 90.7486, 'lit': 22.7843, 'para_cv': 0.4762, 'emo': 3.2948, 'net_oral': 0.6571, 'net_dial': 0.2251, 'exclaim': 3.5966, 'redupl': 4.0332, 'imm_cog': 1.2579, 'imm_perc': 1.2448, 'imm_soma': 2.7877, 'imm_lim': 0.3051, 'breath': 0.0, 'pron3': 10.5555, 'pron_start': 0.041, 'sent_med': 41.0, 'g_turn': 2.5539},
-    "B03": {'_n': 100, 'vague': 0.8694, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.3285, 'simile': 0.4946, 'sent_den': 45.9316, 'para_med': 27.75, 'short_run': 3.0, 'tail': 0.0674, 'bold': 0.0, 'dede': 0.0, 'isde': 0.4516, 'onomat': 0.0, 'space': 0.0, 'short': 0.1567, 'head': 0.0158, 'tell': 0.0, 'cv': 0.6386, 'sent_p90': 39.0, 'sent_p10': 6.0, 'comma_in': 47.8602, 'lit': 8.9436, 'para_cv': 0.6639, 'emo': 2.4065, 'net_oral': 3.2658, 'net_dial': 0.4603, 'exclaim': 2.8531, 'redupl': 13.2252, 'imm_cog': 0.3834, 'imm_perc': 0.9405, 'imm_soma': 1.6295, 'imm_lim': 0.0, 'breath': 0.0, 'pron3': 10.9577, 'pron_start': 0.0317, 'sent_med': 18.0, 'g_turn': 1.6464},
-    "B04": {'_n': 100, 'vague': 0.6527, 'nego': 0.0, 'dash': 0.0, 'rev': 0.3244, 'enum': 0.0, 'simile': 0.6342, 'sent_den': 38.2628, 'para_med': 44.5, 'short_run': 2.0, 'tail': 0.0374, 'bold': 0.0, 'dede': 0.0, 'isde': 0.948, 'onomat': 0.0, 'space': 0.0, 'short': 0.1293, 'head': 0.025, 'tell': 0.0, 'cv': 0.7163, 'sent_p90': 49.0, 'sent_p10': 5.0, 'comma_in': 49.5629, 'lit': 8.8642, 'para_cv': 0.7578, 'emo': 5.3834, 'net_oral': 4.4325, 'net_dial': 0.4434, 'exclaim': 4.2335, 'redupl': 13.201, 'imm_cog': 0.9494, 'imm_perc': 1.8586, 'imm_soma': 1.2563, 'imm_lim': 0.3127, 'breath': 0.0, 'pron3': 8.4827, 'pron_start': 0.0216, 'sent_med': 22.0, 'g_turn': 4.8387},
-    "B05": {'_n': 100, 'vague': 0.7348, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.0, 'simile': 0.6191, 'sent_den': 35.4471, 'para_med': 41.0, 'short_run': 1.0, 'tail': 0.0345, 'bold': 0.0, 'dede': 0.0, 'isde': 0.3655, 'onomat': 0.0, 'space': 0.0, 'short': 0.0512, 'head': 0.0196, 'tell': 0.0, 'cv': 0.579, 'sent_p90': 49.0, 'sent_p10': 9.0, 'comma_in': 53.9096, 'lit': 18.3587, 'para_cv': 0.5943, 'emo': 5.0866, 'net_oral': 1.6523, 'net_dial': 0.2753, 'exclaim': 2.633, 'redupl': 6.332, 'imm_cog': 0.959, 'imm_perc': 1.2854, 'imm_soma': 2.7353, 'imm_lim': 0.3253, 'breath': 0.0, 'pron3': 5.427, 'pron_start': 0.0217, 'sent_med': 24.0, 'g_turn': 3.4287},
-    "B06": {'_n': 100, 'vague': 0.3202, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.324, 'simile': 0.9266, 'sent_den': 43.1542, 'para_med': 23.0, 'short_run': 3.0, 'tail': 0.0611, 'bold': 0.0, 'dede': 0.0, 'isde': 0.6367, 'onomat': 0.1401, 'space': 0.0, 'short': 0.3031, 'head': 0.0153, 'tell': 0.0, 'cv': 0.8617, 'sent_p90': 47.0, 'sent_p10': 4.0, 'comma_in': 52.1946, 'lit': 14.7795, 'para_cv': 0.9057, 'emo': 4.2324, 'net_oral': 1.5639, 'net_dial': 0.5, 'exclaim': 7.173, 'redupl': 17.0432, 'imm_cog': 0.8973, 'imm_perc': 0.9707, 'imm_soma': 1.5718, 'imm_lim': 0.3096, 'breath': 0.0, 'pron3': 4.9099, 'pron_start': 0.0123, 'sent_med': 16.25, 'g_turn': 2.9897},
-    "B07": {'_n': 100, 'vague': 1.1257, 'nego': 0.0, 'dash': 0.0, 'rev': 0.3156, 'enum': 0.0, 'simile': 1.0912, 'sent_den': 33.4877, 'para_med': 36.5, 'short_run': 2.0, 'tail': 0.0437, 'bold': 0.0, 'dede': 0.0, 'isde': 2.1267, 'onomat': 0.0, 'space': 0.0, 'short': 0.1034, 'head': 0.0142, 'tell': 0.0, 'cv': 0.6877, 'sent_p90': 54.5, 'sent_p10': 7.0, 'comma_in': 64.4551, 'lit': 8.0349, 'para_cv': 0.6365, 'emo': 2.7983, 'net_oral': 2.6107, 'net_dial': 0.4104, 'exclaim': 0.3544, 'redupl': 8.9494, 'imm_cog': 0.4395, 'imm_perc': 0.8318, 'imm_soma': 1.0291, 'imm_lim': 0.3273, 'breath': 0.0, 'pron3': 4.7915, 'pron_start': 0.019, 'sent_med': 24.25, 'g_turn': 1.2331},
-    "B08": {'_n': 100, 'vague': 0.2214, 'nego': 0.0, 'dash': 0.0, 'rev': 0.2783, 'enum': 0.2844, 'simile': 1.2587, 'sent_den': 32.459, 'para_med': 38.0, 'short_run': 2.0, 'tail': 0.0455, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0692, 'onomat': 0.37, 'space': 0.0, 'short': 0.1126, 'head': 0.0096, 'tell': 0.0, 'cv': 0.5859, 'sent_p90': 50.0, 'sent_p10': 6.0, 'comma_in': 84.3975, 'lit': 11.175, 'para_cv': 0.5007, 'emo': 5.1224, 'net_oral': 1.8511, 'net_dial': 0.2511, 'exclaim': 8.2394, 'redupl': 7.5925, 'imm_cog': 0.6127, 'imm_perc': 1.8636, 'imm_soma': 2.683, 'imm_lim': 0.0, 'breath': 0.2143, 'pron3': 15.4425, 'pron_start': 0.0521, 'sent_med': 30.0, 'g_turn': 3.1844},
-    "B09": {'_n': 100, 'vague': 1.476, 'nego': 0.0, 'dash': 0.0, 'rev': 0.4794, 'enum': 0.0, 'simile': 0.9749, 'sent_den': 27.1197, 'para_med': 40.25, 'short_run': 1.0, 'tail': 0.0233, 'bold': 0.0, 'dede': 0.0, 'isde': 0.4879, 'onomat': 0.0, 'space': 0.0, 'short': 0.0632, 'head': 0.0189, 'tell': 0.0, 'cv': 0.6053, 'sent_p90': 65.0, 'sent_p10': 9.0, 'comma_in': 46.6757, 'lit': 12.3929, 'para_cv': 0.5496, 'emo': 4.2971, 'net_oral': 6.4229, 'net_dial': 0.3143, 'exclaim': 5.6765, 'redupl': 8.1633, 'imm_cog': 2.9311, 'imm_perc': 2.1239, 'imm_soma': 1.4451, 'imm_lim': 0.0, 'breath': 0.0, 'pron3': 9.9587, 'pron_start': 0.02, 'sent_med': 33.25, 'g_turn': 3.4014},
-    "B10": {'_n': 100, 'vague': 0.2603, 'nego': 0.0, 'dash': 0.0, 'rev': 0.2759, 'enum': 0.2768, 'simile': 1.2239, 'sent_den': 34.4775, 'para_med': 40.25, 'short_run': 1.0, 'tail': 0.0258, 'bold': 0.0, 'dede': 0.0, 'isde': 0.1493, 'onomat': 0.2655, 'space': 0.0, 'short': 0.0985, 'head': 0.0093, 'tell': 0.0, 'cv': 0.5975, 'sent_p90': 49.0, 'sent_p10': 5.0, 'comma_in': 85.4711, 'lit': 11.8242, 'para_cv': 0.4537, 'emo': 5.7233, 'net_oral': 1.8648, 'net_dial': 0.3611, 'exclaim': 5.7572, 'redupl': 10.2168, 'imm_cog': 0.617, 'imm_perc': 1.3038, 'imm_soma': 2.3977, 'imm_lim': 0.0, 'breath': 0.0, 'pron3': 12.0501, 'pron_start': 0.0387, 'sent_med': 29.0, 'g_turn': 2.8335},
-    "B11": {'_n': 100, 'vague': 0.7391, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.0, 'simile': 0.9632, 'sent_den': 48.1361, 'para_med': 23.0, 'short_run': 2.0, 'tail': 0.1111, 'bold': 0.0, 'dede': 0.0, 'isde': 0.4916, 'onomat': 0.0, 'space': 0.0, 'short': 0.1596, 'head': 0.0111, 'tell': 0.0, 'cv': 0.4984, 'sent_p90': 33.0, 'sent_p10': 8.0, 'comma_in': 49.51, 'lit': 20.2481, 'para_cv': 0.5472, 'emo': 3.45, 'net_oral': 0.9851, 'net_dial': 0.2976, 'exclaim': 2.2247, 'redupl': 12.3957, 'imm_cog': 0.9908, 'imm_perc': 0.9881, 'imm_soma': 1.4437, 'imm_lim': 0.0, 'breath': 0.0, 'pron3': 5.3636, 'pron_start': 0.0113, 'sent_med': 19.0, 'g_turn': 4.4042},
-    "B12": {'_n': 100, 'vague': 0.6478, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.0, 'simile': 0.0, 'sent_den': 18.2, 'para_med': 60.5, 'short_run': 1.0, 'tail': 0.0, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0, 'onomat': 0.0, 'space': 0.0, 'short': 0.0814, 'head': 0.0182, 'tell': 0.0, 'cv': 0.7811, 'sent_p90': 108.0, 'sent_p10': 8.0, 'comma_in': 75.1294, 'lit': 20.5648, 'para_cv': 0.5795, 'emo': 7.1262, 'net_oral': 2.4211, 'net_dial': 0.4545, 'exclaim': 1.996, 'redupl': 10.5603, 'imm_cog': 1.1045, 'imm_perc': 0.9538, 'imm_soma': 3.6072, 'imm_lim': 0.31, 'breath': 0.0, 'pron3': 5.6005, 'pron_start': 0.0, 'sent_med': 47.5, 'g_turn': 4.277},
-    "B13": {'_n': 100, 'vague': 0.9371, 'nego': 0.0, 'dash': 0.0, 'rev': 0.3487, 'enum': 0.0, 'simile': 1.1432, 'sent_den': 32.5794, 'para_med': 56.75, 'short_run': 1.0, 'tail': 0.0548, 'bold': 0.0, 'dede': 0.0, 'isde': 0.9482, 'onomat': 0.0, 'space': 0.0, 'short': 0.017, 'head': 0.0251, 'tell': 0.0, 'cv': 0.6321, 'sent_p90': 55.0, 'sent_p10': 9.0, 'comma_in': 54.8193, 'lit': 12.4826, 'para_cv': 0.5662, 'emo': 4.0351, 'net_oral': 1.7873, 'net_dial': 0.3781, 'exclaim': 0.0, 'redupl': 4.374, 'imm_cog': 0.7403, 'imm_perc': 1.3748, 'imm_soma': 2.079, 'imm_lim': 0.2298, 'breath': 0.0, 'pron3': 11.8091, 'pron_start': 0.0267, 'sent_med': 26.0, 'g_turn': 3.1785},
-    "B14": {'_n': 100, 'vague': 0.7398, 'nego': 0.0, 'dash': 0.0, 'rev': 0.3946, 'enum': 0.0, 'simile': 1.0077, 'sent_den': 12.4279, 'para_med': 84.75, 'short_run': 1.0, 'tail': 0.0, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0, 'onomat': 0.0, 'space': 0.0, 'short': 0.05, 'head': 0.0286, 'tell': 0.0, 'cv': 0.594, 'sent_p90': 134.5, 'sent_p10': 12.0, 'comma_in': 71.9262, 'lit': 9.8712, 'para_cv': 0.479, 'emo': 3.2762, 'net_oral': 0.8629, 'net_dial': 0.3431, 'exclaim': 0.0, 'redupl': 7.5468, 'imm_cog': 0.4532, 'imm_perc': 1.9701, 'imm_soma': 2.3092, 'imm_lim': 0.3419, 'breath': 0.0, 'pron3': 13.7275, 'pron_start': 0.0, 'sent_med': 79.5, 'g_turn': 2.843},
-    "B15": {'_n': 100, 'vague': 0.4866, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.0, 'simile': 0.4854, 'sent_den': 20.058, 'para_med': 56.25, 'short_run': 1.0, 'tail': 0.0241, 'bold': 0.0, 'dede': 0.0, 'isde': 0.1232, 'onomat': 0.0, 'space': 0.0, 'short': 0.0833, 'head': 0.0238, 'tell': 0.0, 'cv': 0.652, 'sent_p90': 90.5, 'sent_p10': 11.0, 'comma_in': 55.0146, 'lit': 17.3012, 'para_cv': 0.5622, 'emo': 2.1117, 'net_oral': 0.9716, 'net_dial': 0.4264, 'exclaim': 0.5689, 'redupl': 6.3091, 'imm_cog': 0.4871, 'imm_perc': 1.3085, 'imm_soma': 0.9732, 'imm_lim': 0.0, 'breath': 0.0, 'pron3': 11.7439, 'pron_start': 0.0256, 'sent_med': 45.0, 'g_turn': 3.293},
-    "B16": {'_n': 87, 'vague': 1.231, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.4125, 'simile': 0.4409, 'sent_den': 36.1991, 'para_med': 35.0, 'short_run': 2.0, 'tail': 0.0462, 'bold': 0.0, 'dede': 0.0, 'isde': 0.9112, 'onomat': 0.0, 'space': 0.0, 'short': 0.1538, 'head': 0.019, 'tell': 0.0, 'cv': 0.7644, 'sent_p90': 57.0, 'sent_p10': 6.0, 'comma_in': 53.6564, 'lit': 9.4378, 'para_cv': 0.6962, 'emo': 5.8877, 'net_oral': 2.5633, 'net_dial': 0.5319, 'exclaim': 1.5957, 'redupl': 13.2275, 'imm_cog': 1.3145, 'imm_perc': 1.9952, 'imm_soma': 1.81, 'imm_lim': 0.0, 'breath': 0.0, 'pron3': 2.3641, 'pron_start': 0.0, 'sent_med': 21.0, 'g_turn': 3.5247},
-    "B17": {'_n': 100, 'vague': 0.569, 'nego': 0.0, 'dash': 0.0, 'rev': 0.3264, 'enum': 0.0, 'simile': 0.632, 'sent_den': 46.0043, 'para_med': 41.0, 'short_run': 1.0, 'tail': 0.0357, 'bold': 0.0, 'dede': 0.0, 'isde': 0.9238, 'onomat': 0.0, 'space': 0.0, 'short': 0.0828, 'head': 0.0241, 'tell': 0.0, 'cv': 0.7944, 'sent_p90': 45.0, 'sent_p10': 5.0, 'comma_in': 44.5036, 'lit': 8.8801, 'para_cv': 0.7494, 'emo': 3.6224, 'net_oral': 5.2261, 'net_dial': 0.6155, 'exclaim': 5.4524, 'redupl': 12.5125, 'imm_cog': 0.82, 'imm_perc': 1.9516, 'imm_soma': 1.2034, 'imm_lim': 0.316, 'breath': 0.0, 'pron3': 9.1304, 'pron_start': 0.0157, 'sent_med': 17.0, 'g_turn': 2.5525},
-    "B18": {'_n': 100, 'vague': 0.481, 'nego': 0.0, 'dash': 0.0, 'rev': 0.222, 'enum': 0.0, 'simile': 0.5049, 'sent_den': 19.9846, 'para_med': 55.0, 'short_run': 1.0, 'tail': 0.0, 'bold': 0.0, 'dede': 0.0, 'isde': 0.2885, 'onomat': 0.0, 'space': 0.0, 'short': 0.0488, 'head': 0.0245, 'tell': 0.0, 'cv': 0.626, 'sent_p90': 85.0, 'sent_p10': 10.0, 'comma_in': 45.4347, 'lit': 14.6101, 'para_cv': 0.4291, 'emo': 2.1513, 'net_oral': 1.7472, 'net_dial': 0.3333, 'exclaim': 0.0, 'redupl': 5.4576, 'imm_cog': 0.9307, 'imm_perc': 0.9718, 'imm_soma': 0.5337, 'imm_lim': 0.0, 'breath': 0.0, 'pron3': 9.8663, 'pron_start': 0.0, 'sent_med': 48.0, 'g_turn': 3.9604},
-    "B19": {'_n': 100, 'vague': 0.3713, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.3094, 'simile': 1.1359, 'sent_den': 28.1751, 'para_med': 32.0, 'short_run': 2.0, 'tail': 0.0234, 'bold': 0.0, 'dede': 0.0, 'isde': 0.2602, 'onomat': 0.0, 'space': 0.0, 'short': 0.1137, 'head': 0.0396, 'tell': 0.0, 'cv': 0.7135, 'sent_p90': 65.0, 'sent_p10': 8.5, 'comma_in': 56.5432, 'lit': 16.4941, 'para_cv': 0.6954, 'emo': 3.4757, 'net_oral': 0.9685, 'net_dial': 0.4998, 'exclaim': 2.3228, 'redupl': 11.5552, 'imm_cog': 1.2682, 'imm_perc': 1.506, 'imm_soma': 1.8605, 'imm_lim': 0.3123, 'breath': 0.0, 'pron3': 10.4344, 'pron_start': 0.071, 'sent_med': 29.75, 'g_turn': 0.9063},
-    "B20": {'_n': 100, 'vague': 1.4739, 'nego': 0.0, 'dash': 0.0, 'rev': 0.1566, 'enum': 0.57, 'simile': 1.2902, 'sent_den': 37.9329, 'para_med': 24.0, 'short_run': 4.0, 'tail': 0.0289, 'bold': 0.0, 'dede': 0.0, 'isde': 0.5026, 'onomat': 0.0, 'space': 0.2341, 'short': 0.2469, 'head': 0.0127, 'tell': 0.0, 'cv': 0.8724, 'sent_p90': 55.0, 'sent_p10': 4.0, 'comma_in': 51.3971, 'lit': 4.7133, 'para_cv': 0.7429, 'emo': 3.8569, 'net_oral': 6.8494, 'net_dial': 0.4743, 'exclaim': 7.4219, 'redupl': 23.6098, 'imm_cog': 0.9828, 'imm_perc': 1.5302, 'imm_soma': 1.8218, 'imm_lim': 0.0635, 'breath': 0.0, 'pron3': 10.825, 'pron_start': 0.0171, 'sent_med': 18.5, 'g_turn': 1.8147},
-    "B21": {'_n': 100, 'vague': 0.2387, 'nego': 0.0, 'dash': 0.0, 'rev': 0.2702, 'enum': 0.2894, 'simile': 1.0878, 'sent_den': 31.3811, 'para_med': 42.0, 'short_run': 1.0, 'tail': 0.0106, 'bold': 0.0, 'dede': 0.0, 'isde': 0.2068, 'onomat': 0.2806, 'space': 0.0, 'short': 0.0851, 'head': 0.0104, 'tell': 0.0, 'cv': 0.5685, 'sent_p90': 52.0, 'sent_p10': 6.0, 'comma_in': 75.6393, 'lit': 11.6744, 'para_cv': 0.4484, 'emo': 4.9552, 'net_oral': 1.3617, 'net_dial': 0.4292, 'exclaim': 3.5983, 'redupl': 11.3612, 'imm_cog': 0.5217, 'imm_perc': 0.8946, 'imm_soma': 2.6224, 'imm_lim': 0.2099, 'breath': 0.0, 'pron3': 9.8394, 'pron_start': 0.029, 'sent_med': 32.0, 'g_turn': 3.4035},
-    "B22": {'_n': 100, 'vague': 0.2329, 'nego': 0.0, 'dash': 0.0, 'rev': 0.2697, 'enum': 0.0, 'simile': 0.4884, 'sent_den': 19.4973, 'para_med': 40.0, 'short_run': 2.0, 'tail': 0.0319, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0431, 'onomat': 0.0, 'space': 0.3001, 'short': 0.1144, 'head': 0.0296, 'tell': 0.0, 'cv': 0.9028, 'sent_p90': 109.5, 'sent_p10': 11.5, 'comma_in': 66.1329, 'lit': 9.9003, 'para_cv': 1.1999, 'emo': 6.8046, 'net_oral': 1.4463, 'net_dial': 0.4683, 'exclaim': 1.2406, 'redupl': 1.1907, 'imm_cog': 0.4038, 'imm_perc': 1.0599, 'imm_soma': 2.2134, 'imm_lim': 0.1566, 'breath': 0.1757, 'pron3': 4.6745, 'pron_start': 0.012, 'sent_med': 35.0, 'g_turn': 2.3361},
-    "B23": {'_n': 100, 'vague': 0.3455, 'nego': 0.0, 'dash': 0.0, 'rev': 0.2943, 'enum': 0.39, 'simile': 1.4318, 'sent_den': 31.0699, 'para_med': 25.5, 'short_run': 3.0, 'tail': 0.0957, 'bold': 0.0, 'dede': 0.0, 'isde': 0.4287, 'onomat': 0.0, 'space': 0.0, 'short': 0.2596, 'head': 0.0132, 'tell': 0.0, 'cv': 0.854, 'sent_p90': 65.5, 'sent_p10': 6.0, 'comma_in': 69.9069, 'lit': 11.8851, 'para_cv': 0.7568, 'emo': 4.2214, 'net_oral': 1.3366, 'net_dial': 0.3469, 'exclaim': 6.8722, 'redupl': 15.4417, 'imm_cog': 0.8945, 'imm_perc': 1.1943, 'imm_soma': 1.4251, 'imm_lim': 0.3128, 'breath': 0.0, 'pron3': 9.3577, 'pron_start': 0.0448, 'sent_med': 24.0, 'g_turn': 2.3674},
-    "B24": {'_n': 100, 'vague': 0.9121, 'nego': 0.0, 'dash': 0.3118, 'rev': 0.2143, 'enum': 0.2487, 'simile': 0.765, 'sent_den': 19.2641, 'para_med': 54.0, 'short_run': 1.0, 'tail': 0.0237, 'bold': 0.0, 'dede': 0.0, 'isde': 0.591, 'onomat': 0.0, 'space': 0.0, 'short': 0.0691, 'head': 0.0183, 'tell': 0.0, 'cv': 0.827, 'sent_p90': 110.5, 'sent_p10': 8.0, 'comma_in': 45.5396, 'lit': 18.8476, 'para_cv': 0.6845, 'emo': 3.1883, 'net_oral': 1.3744, 'net_dial': 0.5804, 'exclaim': 1.1428, 'redupl': 7.3159, 'imm_cog': 0.7269, 'imm_perc': 1.6686, 'imm_soma': 1.4865, 'imm_lim': 0.2552, 'breath': 0.0, 'pron3': 9.3661, 'pron_start': 0.0336, 'sent_med': 38.0, 'g_turn': 2.0035},
+    "B01": {'_n': 100, 'vague': 0.3693, 'nego': 0.0, 'dash': 0.0, 'rev': 0.3287, 'enum': 0.0, 'simile': 0.7452, 'sent_den': 23.7371, 'para_med': 58.0, 'short_run': 1.0, 'tail': 0.0235, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 4.6035, 'short': 0.063, 'head': 0.0161, 'tell': 0.0, 'cv': 0.6888, 'sent_p90': 79.5, 'sent_p10': 6.0, 'comma_in': 88.8797, 'lit': 15.1581, 'para_cv': 0.5025, 'emo': 4.7988, 'net_oral': 1.098, 'net_dial': 0.315, 'exclaim': 6.8249, 'redupl': 8.9121, 'imm_cog': 1.1527, 'imm_perc': 2.3422, 'imm_soma': 2.3063, 'breath': 0.3752, 'pron3': 9.9561, 'pron_start': 0.0216, 'sent_med': 39.5, 'g_turn': 1.7716, 'surprise': 0.7593, 'conn_lit': 0.7115, 'touch_temp': 0.3513},
+    "B02": {'_n': 100, 'vague': 0.2159, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.0, 'simile': 0.3472, 'sent_den': 22.7724, 'para_med': 49.75, 'short_run': 1.0, 'tail': 0.0312, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 5.6911, 'short': 0.037, 'head': 0.0152, 'tell': 0.0, 'cv': 0.5506, 'sent_p90': 73.5, 'sent_p10': 14.0, 'comma_in': 90.7486, 'lit': 22.7843, 'para_cv': 0.4762, 'emo': 3.2948, 'net_oral': 0.6571, 'net_dial': 0.2251, 'exclaim': 3.5966, 'redupl': 4.0332, 'imm_cog': 1.2579, 'imm_perc': 1.2448, 'imm_soma': 2.7877, 'breath': 0.0, 'pron3': 10.5555, 'pron_start': 0.041, 'sent_med': 41.0, 'g_turn': 2.5539, 'surprise': 0.4058, 'conn_lit': 2.7621, 'touch_temp': 0.3312},
+    "B03": {'_n': 100, 'vague': 0.8694, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.3285, 'simile': 0.4946, 'sent_den': 45.9316, 'para_med': 27.75, 'short_run': 3.0, 'tail': 0.0674, 'bold': 0.0, 'dede': 0.0, 'isde': 0.4516, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 0.4803, 'short': 0.1567, 'head': 0.0158, 'tell': 0.0, 'cv': 0.6386, 'sent_p90': 39.0, 'sent_p10': 6.0, 'comma_in': 47.8602, 'lit': 8.9436, 'para_cv': 0.6639, 'emo': 2.4065, 'net_oral': 3.2658, 'net_dial': 0.4603, 'exclaim': 2.8531, 'redupl': 13.2252, 'imm_cog': 0.3834, 'imm_perc': 0.9405, 'imm_soma': 1.6295, 'breath': 0.0, 'pron3': 10.9577, 'pron_start': 0.0317, 'sent_med': 18.0, 'g_turn': 1.6464, 'surprise': 0.329, 'conn_lit': 1.3661, 'touch_temp': 0.4785},
+    "B04": {'_n': 100, 'vague': 0.6527, 'nego': 0.0, 'dash': 0.0, 'rev': 0.3244, 'enum': 0.0, 'simile': 0.6342, 'sent_den': 38.2628, 'para_med': 44.5, 'short_run': 2.0, 'tail': 0.0374, 'bold': 0.0, 'dede': 0.0, 'isde': 0.948, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 1.9087, 'short': 0.1293, 'head': 0.025, 'tell': 0.0, 'cv': 0.7163, 'sent_p90': 49.0, 'sent_p10': 5.0, 'comma_in': 49.5629, 'lit': 8.8642, 'para_cv': 0.7578, 'emo': 5.3834, 'net_oral': 4.4325, 'net_dial': 0.4434, 'exclaim': 4.2335, 'redupl': 13.201, 'imm_cog': 0.9494, 'imm_perc': 1.8586, 'imm_soma': 1.2563, 'breath': 0.0, 'pron3': 8.4827, 'pron_start': 0.0216, 'sent_med': 22.0, 'g_turn': 4.8387, 'surprise': 0.6383, 'conn_lit': 2.1158, 'touch_temp': 0.3226},
+    "B05": {'_n': 100, 'vague': 0.7348, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.0, 'simile': 0.6191, 'sent_den': 35.4471, 'para_med': 41.0, 'short_run': 1.0, 'tail': 0.0345, 'bold': 0.0, 'dede': 0.0, 'isde': 0.3655, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 6.2619, 'short': 0.0512, 'head': 0.0196, 'tell': 0.0, 'cv': 0.579, 'sent_p90': 49.0, 'sent_p10': 9.0, 'comma_in': 53.9096, 'lit': 18.3587, 'para_cv': 0.5943, 'emo': 5.0866, 'net_oral': 1.6523, 'net_dial': 0.2753, 'exclaim': 2.633, 'redupl': 6.332, 'imm_cog': 0.959, 'imm_perc': 1.2854, 'imm_soma': 2.7353, 'breath': 0.0, 'pron3': 5.427, 'pron_start': 0.0217, 'sent_med': 24.0, 'g_turn': 3.4287, 'surprise': 0.6551, 'conn_lit': 2.9575, 'touch_temp': 0.3609},
+    "B06": {'_n': 100, 'vague': 0.3202, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.324, 'simile': 0.9266, 'sent_den': 43.1542, 'para_med': 23.0, 'short_run': 3.0, 'tail': 0.0611, 'bold': 0.0, 'dede': 0.0, 'isde': 0.6367, 'onomat': 0.1401, 'space': 0.0, 'dem_lit': 0.6387, 'short': 0.3031, 'head': 0.0153, 'tell': 0.0, 'cv': 0.8617, 'sent_p90': 47.0, 'sent_p10': 4.0, 'comma_in': 52.1946, 'lit': 14.7795, 'para_cv': 0.9057, 'emo': 4.2324, 'net_oral': 1.5639, 'net_dial': 0.5, 'exclaim': 7.173, 'redupl': 17.0432, 'imm_cog': 0.8973, 'imm_perc': 0.9707, 'imm_soma': 1.5718, 'breath': 0.0, 'pron3': 4.9099, 'pron_start': 0.0123, 'sent_med': 16.25, 'g_turn': 2.9897, 'surprise': 0.6392, 'conn_lit': 0.3271, 'touch_temp': 0.0},
+    "B07": {'_n': 100, 'vague': 1.1257, 'nego': 0.0, 'dash': 0.0, 'rev': 0.3156, 'enum': 0.0, 'simile': 1.0912, 'sent_den': 33.4877, 'para_med': 36.5, 'short_run': 2.0, 'tail': 0.0437, 'bold': 0.0, 'dede': 0.0, 'isde': 2.1267, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 0.7875, 'short': 0.1034, 'head': 0.0142, 'tell': 0.0, 'cv': 0.6877, 'sent_p90': 54.5, 'sent_p10': 7.0, 'comma_in': 64.4551, 'lit': 8.0349, 'para_cv': 0.6365, 'emo': 2.7983, 'net_oral': 2.6107, 'net_dial': 0.4104, 'exclaim': 0.3544, 'redupl': 8.9494, 'imm_cog': 0.4395, 'imm_perc': 0.8318, 'imm_soma': 1.0291, 'breath': 0.0, 'pron3': 4.7915, 'pron_start': 0.019, 'sent_med': 24.25, 'g_turn': 1.2331, 'surprise': 0.0, 'conn_lit': 2.3124, 'touch_temp': 0.4824},
+    "B08": {'_n': 100, 'vague': 0.2214, 'nego': 0.0, 'dash': 0.0, 'rev': 0.2783, 'enum': 0.2844, 'simile': 1.2587, 'sent_den': 32.459, 'para_med': 38.0, 'short_run': 2.0, 'tail': 0.0455, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0692, 'onomat': 0.37, 'space': 0.0, 'dem_lit': 1.7537, 'short': 0.1126, 'head': 0.0096, 'tell': 0.0, 'cv': 0.5859, 'sent_p90': 50.0, 'sent_p10': 6.0, 'comma_in': 84.3975, 'lit': 11.175, 'para_cv': 0.5007, 'emo': 5.1224, 'net_oral': 1.8511, 'net_dial': 0.2511, 'exclaim': 8.2394, 'redupl': 7.5925, 'imm_cog': 0.6127, 'imm_perc': 1.8636, 'imm_soma': 2.683, 'breath': 0.2143, 'pron3': 15.4425, 'pron_start': 0.0521, 'sent_med': 30.0, 'g_turn': 3.1844, 'surprise': 0.6633, 'conn_lit': 1.2593, 'touch_temp': 0.5772},
+    "B09": {'_n': 100, 'vague': 1.476, 'nego': 0.0, 'dash': 0.0, 'rev': 0.4794, 'enum': 0.0, 'simile': 0.9749, 'sent_den': 27.1197, 'para_med': 40.25, 'short_run': 1.0, 'tail': 0.0233, 'bold': 0.0, 'dede': 0.0, 'isde': 0.4879, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 1.3722, 'short': 0.0632, 'head': 0.0189, 'tell': 0.0, 'cv': 0.6053, 'sent_p90': 65.0, 'sent_p10': 9.0, 'comma_in': 46.6757, 'lit': 12.3929, 'para_cv': 0.5496, 'emo': 4.2971, 'net_oral': 6.4229, 'net_dial': 0.3143, 'exclaim': 5.6765, 'redupl': 8.1633, 'imm_cog': 2.9311, 'imm_perc': 2.1239, 'imm_soma': 1.4451, 'breath': 0.0, 'pron3': 9.9587, 'pron_start': 0.02, 'sent_med': 33.25, 'g_turn': 3.4014, 'surprise': 1.386, 'conn_lit': 1.9724, 'touch_temp': 0.4904},
+    "B10": {'_n': 100, 'vague': 0.2603, 'nego': 0.0, 'dash': 0.0, 'rev': 0.2759, 'enum': 0.2768, 'simile': 1.2239, 'sent_den': 34.4775, 'para_med': 40.25, 'short_run': 1.0, 'tail': 0.0258, 'bold': 0.0, 'dede': 0.0, 'isde': 0.1493, 'onomat': 0.2655, 'space': 0.0, 'dem_lit': 2.3699, 'short': 0.0985, 'head': 0.0093, 'tell': 0.0, 'cv': 0.5975, 'sent_p90': 49.0, 'sent_p10': 5.0, 'comma_in': 85.4711, 'lit': 11.8242, 'para_cv': 0.4537, 'emo': 5.7233, 'net_oral': 1.8648, 'net_dial': 0.3611, 'exclaim': 5.7572, 'redupl': 10.2168, 'imm_cog': 0.617, 'imm_perc': 1.3038, 'imm_soma': 2.3977, 'breath': 0.0, 'pron3': 12.0501, 'pron_start': 0.0387, 'sent_med': 29.0, 'g_turn': 2.8335, 'surprise': 0.6467, 'conn_lit': 1.4348, 'touch_temp': 0.4853},
+    "B11": {'_n': 100, 'vague': 0.7391, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.0, 'simile': 0.9632, 'sent_den': 48.1361, 'para_med': 23.0, 'short_run': 2.0, 'tail': 0.1111, 'bold': 0.0, 'dede': 0.0, 'isde': 0.4916, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 3.1385, 'short': 0.1596, 'head': 0.0111, 'tell': 0.0, 'cv': 0.4984, 'sent_p90': 33.0, 'sent_p10': 8.0, 'comma_in': 49.51, 'lit': 20.2481, 'para_cv': 0.5472, 'emo': 3.45, 'net_oral': 0.9851, 'net_dial': 0.2976, 'exclaim': 2.2247, 'redupl': 12.3957, 'imm_cog': 0.9908, 'imm_perc': 0.9881, 'imm_soma': 1.4437, 'breath': 0.0, 'pron3': 5.3636, 'pron_start': 0.0113, 'sent_med': 19.0, 'g_turn': 4.4042, 'surprise': 0.4942, 'conn_lit': 2.851, 'touch_temp': 0.2224},
+    "B12": {'_n': 100, 'vague': 0.6478, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.0, 'simile': 0.0, 'sent_den': 18.2, 'para_med': 60.5, 'short_run': 1.0, 'tail': 0.0, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 2.3719, 'short': 0.0814, 'head': 0.0182, 'tell': 0.0, 'cv': 0.7811, 'sent_p90': 108.0, 'sent_p10': 8.0, 'comma_in': 75.1294, 'lit': 20.5648, 'para_cv': 0.5795, 'emo': 7.1262, 'net_oral': 2.4211, 'net_dial': 0.4545, 'exclaim': 1.996, 'redupl': 10.5603, 'imm_cog': 1.1045, 'imm_perc': 0.9538, 'imm_soma': 3.6072, 'breath': 0.0, 'pron3': 5.6005, 'pron_start': 0.0, 'sent_med': 47.5, 'g_turn': 4.277, 'surprise': 1.2877, 'conn_lit': 1.3038, 'touch_temp': 0.5815},
+    "B13": {'_n': 100, 'vague': 0.9371, 'nego': 0.0, 'dash': 0.0, 'rev': 0.3487, 'enum': 0.0, 'simile': 1.1432, 'sent_den': 32.5794, 'para_med': 56.75, 'short_run': 1.0, 'tail': 0.0548, 'bold': 0.0, 'dede': 0.0, 'isde': 0.9482, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 1.7584, 'short': 0.017, 'head': 0.0251, 'tell': 0.0, 'cv': 0.6321, 'sent_p90': 55.0, 'sent_p10': 9.0, 'comma_in': 54.8193, 'lit': 12.4826, 'para_cv': 0.5662, 'emo': 4.0351, 'net_oral': 1.7873, 'net_dial': 0.3781, 'exclaim': 0.0, 'redupl': 4.374, 'imm_cog': 0.7403, 'imm_perc': 1.3748, 'imm_soma': 2.079, 'breath': 0.0, 'pron3': 11.8091, 'pron_start': 0.0267, 'sent_med': 26.0, 'g_turn': 3.1785, 'surprise': 0.7858, 'conn_lit': 2.4559, 'touch_temp': 0.358},
+    "B14": {'_n': 100, 'vague': 0.7398, 'nego': 0.0, 'dash': 0.0, 'rev': 0.3946, 'enum': 0.0, 'simile': 1.0077, 'sent_den': 12.4279, 'para_med': 84.75, 'short_run': 1.0, 'tail': 0.0, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 0.4102, 'short': 0.05, 'head': 0.0286, 'tell': 0.0, 'cv': 0.594, 'sent_p90': 134.5, 'sent_p10': 12.0, 'comma_in': 71.9262, 'lit': 9.8712, 'para_cv': 0.479, 'emo': 3.2762, 'net_oral': 0.8629, 'net_dial': 0.3431, 'exclaim': 0.0, 'redupl': 7.5468, 'imm_cog': 0.4532, 'imm_perc': 1.9701, 'imm_soma': 2.3092, 'breath': 0.0, 'pron3': 13.7275, 'pron_start': 0.0, 'sent_med': 79.5, 'g_turn': 2.843, 'surprise': 0.3544, 'conn_lit': 0.0, 'touch_temp': 0.6951},
+    "B15": {'_n': 100, 'vague': 0.4866, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.0, 'simile': 0.4854, 'sent_den': 20.058, 'para_med': 56.25, 'short_run': 1.0, 'tail': 0.0241, 'bold': 0.0, 'dede': 0.0, 'isde': 0.1232, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 0.6933, 'short': 0.0833, 'head': 0.0238, 'tell': 0.0, 'cv': 0.652, 'sent_p90': 90.5, 'sent_p10': 11.0, 'comma_in': 55.0146, 'lit': 17.3012, 'para_cv': 0.5622, 'emo': 2.1117, 'net_oral': 0.9716, 'net_dial': 0.4264, 'exclaim': 0.5689, 'redupl': 6.3091, 'imm_cog': 0.4871, 'imm_perc': 1.3085, 'imm_soma': 0.9732, 'breath': 0.0, 'pron3': 11.7439, 'pron_start': 0.0256, 'sent_med': 45.0, 'g_turn': 3.293, 'surprise': 0.4792, 'conn_lit': 1.3633, 'touch_temp': 0.0},
+    "B16": {'_n': 87, 'vague': 1.231, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.4125, 'simile': 0.4409, 'sent_den': 36.1991, 'para_med': 35.0, 'short_run': 2.0, 'tail': 0.0462, 'bold': 0.0, 'dede': 0.0, 'isde': 0.9112, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 0.9537, 'short': 0.1538, 'head': 0.019, 'tell': 0.0, 'cv': 0.7644, 'sent_p90': 57.0, 'sent_p10': 6.0, 'comma_in': 53.6564, 'lit': 9.4378, 'para_cv': 0.6962, 'emo': 5.8877, 'net_oral': 2.5633, 'net_dial': 0.5319, 'exclaim': 1.5957, 'redupl': 13.2275, 'imm_cog': 1.3145, 'imm_perc': 1.9952, 'imm_soma': 1.81, 'breath': 0.0, 'pron3': 2.3641, 'pron_start': 0.0, 'sent_med': 21.0, 'g_turn': 3.5247, 'surprise': 0.6689, 'conn_lit': 0.3794, 'touch_temp': 0.4452},
+    "B17": {'_n': 100, 'vague': 0.569, 'nego': 0.0, 'dash': 0.0, 'rev': 0.3264, 'enum': 0.0, 'simile': 0.632, 'sent_den': 46.0043, 'para_med': 41.0, 'short_run': 1.0, 'tail': 0.0357, 'bold': 0.0, 'dede': 0.0, 'isde': 0.9238, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 2.4348, 'short': 0.0828, 'head': 0.0241, 'tell': 0.0, 'cv': 0.7944, 'sent_p90': 45.0, 'sent_p10': 5.0, 'comma_in': 44.5036, 'lit': 8.8801, 'para_cv': 0.7494, 'emo': 3.6224, 'net_oral': 5.2261, 'net_dial': 0.6155, 'exclaim': 5.4524, 'redupl': 12.5125, 'imm_cog': 0.82, 'imm_perc': 1.9516, 'imm_soma': 1.2034, 'breath': 0.0, 'pron3': 9.1304, 'pron_start': 0.0157, 'sent_med': 17.0, 'g_turn': 2.5525, 'surprise': 0.6382, 'conn_lit': 2.5774, 'touch_temp': 0.4536},
+    "B18": {'_n': 100, 'vague': 0.481, 'nego': 0.0, 'dash': 0.0, 'rev': 0.222, 'enum': 0.0, 'simile': 0.5049, 'sent_den': 19.9846, 'para_med': 55.0, 'short_run': 1.0, 'tail': 0.0, 'bold': 0.0, 'dede': 0.0, 'isde': 0.2885, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 0.4803, 'short': 0.0488, 'head': 0.0245, 'tell': 0.0, 'cv': 0.626, 'sent_p90': 85.0, 'sent_p10': 10.0, 'comma_in': 45.4347, 'lit': 14.6101, 'para_cv': 0.4291, 'emo': 2.1513, 'net_oral': 1.7472, 'net_dial': 0.3333, 'exclaim': 0.0, 'redupl': 5.4576, 'imm_cog': 0.9307, 'imm_perc': 0.9718, 'imm_soma': 0.5337, 'breath': 0.0, 'pron3': 9.8663, 'pron_start': 0.0, 'sent_med': 48.0, 'g_turn': 3.9604, 'surprise': 0.4734, 'conn_lit': 0.8724, 'touch_temp': 0.0},
+    "B19": {'_n': 100, 'vague': 0.3713, 'nego': 0.0, 'dash': 0.0, 'rev': 0.0, 'enum': 0.3094, 'simile': 1.1359, 'sent_den': 28.1751, 'para_med': 32.0, 'short_run': 2.0, 'tail': 0.0234, 'bold': 0.0, 'dede': 0.0, 'isde': 0.2602, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 0.6490, 'short': 0.1137, 'head': 0.0396, 'tell': 0.0, 'cv': 0.7135, 'sent_p90': 65.0, 'sent_p10': 8.5, 'comma_in': 56.5432, 'lit': 16.4941, 'para_cv': 0.6954, 'emo': 3.4757, 'net_oral': 0.9685, 'net_dial': 0.4998, 'exclaim': 2.3228, 'redupl': 11.5552, 'imm_cog': 1.2682, 'imm_perc': 1.506, 'imm_soma': 1.8605, 'breath': 0.0, 'pron3': 10.4344, 'pron_start': 0.071, 'sent_med': 29.75, 'g_turn': 0.9063, 'surprise': 0.3077, 'conn_lit': 1.646, 'touch_temp': 0.3185},
+    "B20": {'_n': 100, 'vague': 1.4739, 'nego': 0.0, 'dash': 0.0, 'rev': 0.1566, 'enum': 0.57, 'simile': 1.2902, 'sent_den': 37.9329, 'para_med': 24.0, 'short_run': 4.0, 'tail': 0.0289, 'bold': 0.0, 'dede': 0.0, 'isde': 0.5026, 'onomat': 0.0, 'space': 0.2341, 'dem_lit': 0.5522, 'short': 0.2469, 'head': 0.0127, 'tell': 0.0, 'cv': 0.8724, 'sent_p90': 55.0, 'sent_p10': 4.0, 'comma_in': 51.3971, 'lit': 4.7133, 'para_cv': 0.7429, 'emo': 3.8569, 'net_oral': 6.8494, 'net_dial': 0.4743, 'exclaim': 7.4219, 'redupl': 23.6098, 'imm_cog': 0.9828, 'imm_perc': 1.5302, 'imm_soma': 1.8218, 'breath': 0.0, 'pron3': 10.825, 'pron_start': 0.0171, 'sent_med': 18.5, 'g_turn': 1.8147, 'surprise': 0.3709, 'conn_lit': 1.2077, 'touch_temp': 0.9735},
+    "B21": {'_n': 100, 'vague': 0.2387, 'nego': 0.0, 'dash': 0.0, 'rev': 0.2702, 'enum': 0.2894, 'simile': 1.0878, 'sent_den': 31.3811, 'para_med': 42.0, 'short_run': 1.0, 'tail': 0.0106, 'bold': 0.0, 'dede': 0.0, 'isde': 0.2068, 'onomat': 0.2806, 'space': 0.0, 'dem_lit': 2.1551, 'short': 0.0851, 'head': 0.0104, 'tell': 0.0, 'cv': 0.5685, 'sent_p90': 52.0, 'sent_p10': 6.0, 'comma_in': 75.6393, 'lit': 11.6744, 'para_cv': 0.4484, 'emo': 4.9552, 'net_oral': 1.3617, 'net_dial': 0.4292, 'exclaim': 3.5983, 'redupl': 11.3612, 'imm_cog': 0.5217, 'imm_perc': 0.8946, 'imm_soma': 2.6224, 'breath': 0.0, 'pron3': 9.8394, 'pron_start': 0.029, 'sent_med': 32.0, 'g_turn': 3.4035, 'surprise': 0.3163, 'conn_lit': 1.4534, 'touch_temp': 0.5781},
+    "B22": {'_n': 100, 'vague': 0.2329, 'nego': 0.0, 'dash': 0.0, 'rev': 0.2697, 'enum': 0.0, 'simile': 0.4884, 'sent_den': 19.4973, 'para_med': 40.0, 'short_run': 2.0, 'tail': 0.0319, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0431, 'onomat': 0.0, 'space': 0.3001, 'dem_lit': 1.3044, 'short': 0.1144, 'head': 0.0296, 'tell': 0.0, 'cv': 0.9028, 'sent_p90': 109.5, 'sent_p10': 11.5, 'comma_in': 66.1329, 'lit': 9.9003, 'para_cv': 1.1999, 'emo': 6.8046, 'net_oral': 1.4463, 'net_dial': 0.4683, 'exclaim': 1.2406, 'redupl': 1.1907, 'imm_cog': 0.4038, 'imm_perc': 1.0599, 'imm_soma': 2.2134, 'breath': 0.1757, 'pron3': 4.6745, 'pron_start': 0.012, 'sent_med': 35.0, 'g_turn': 2.3361, 'surprise': 0.3134, 'conn_lit': 1.1472, 'touch_temp': 2.52},
+    "B23": {'_n': 100, 'vague': 0.3455, 'nego': 0.0, 'dash': 0.0, 'rev': 0.2943, 'enum': 0.39, 'simile': 1.4318, 'sent_den': 31.0699, 'para_med': 25.5, 'short_run': 3.0, 'tail': 0.0957, 'bold': 0.0, 'dede': 0.0, 'isde': 0.4287, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 1.3970, 'short': 0.2596, 'head': 0.0132, 'tell': 0.0, 'cv': 0.854, 'sent_p90': 65.5, 'sent_p10': 6.0, 'comma_in': 69.9069, 'lit': 11.8851, 'para_cv': 0.7568, 'emo': 4.2214, 'net_oral': 1.3366, 'net_dial': 0.3469, 'exclaim': 6.8722, 'redupl': 15.4417, 'imm_cog': 0.8945, 'imm_perc': 1.1943, 'imm_soma': 1.4251, 'breath': 0.0, 'pron3': 9.3577, 'pron_start': 0.0448, 'sent_med': 24.0, 'g_turn': 2.3674, 'surprise': 0.8687, 'conn_lit': 1.8321, 'touch_temp': 0.2921},
+    "B24": {'_n': 100, 'vague': 0.9121, 'nego': 0.0, 'dash': 0.3118, 'rev': 0.2143, 'enum': 0.2487, 'simile': 0.765, 'sent_den': 19.2641, 'para_med': 54.0, 'short_run': 1.0, 'tail': 0.0237, 'bold': 0.0, 'dede': 0.0, 'isde': 0.591, 'onomat': 0.0, 'space': 0.0, 'dem_lit': 0.8132, 'short': 0.0691, 'head': 0.0183, 'tell': 0.0, 'cv': 0.827, 'sent_p90': 110.5, 'sent_p10': 8.0, 'comma_in': 45.5396, 'lit': 18.8476, 'para_cv': 0.6845, 'emo': 3.1883, 'net_oral': 1.3744, 'net_dial': 0.5804, 'exclaim': 1.1428, 'redupl': 7.3159, 'imm_cog': 0.7269, 'imm_perc': 1.6686, 'imm_soma': 1.4865, 'breath': 0.0, 'pron3': 9.3661, 'pron_start': 0.0336, 'sent_med': 38.0, 'g_turn': 2.0035, 'surprise': 0.2733, 'conn_lit': 3.5328, 'touch_temp': 0.4859},
 }
 
 # BENCH_KEYS / BENCH_NEG / BENCH_POS 是旧版「AI 味」时代的遗留：BENCH_KEYS 被
@@ -393,8 +474,9 @@ BENCH_LABEL = {
     "syn": "句法",
     "rev": "反转句/千字", "simile": "明喻/千字", "head": "句首集中",
     "dash": "破折号收束", "bold": "正文加粗", "cv": "句长CV",
+    "dem_lit": "古典指示词",
     "imm_perc": "感知/千字", "imm_cog": "认知反应", "imm_soma": "身体感受",
-    "imm_lim": "受限标记",
+    "surprise": "意外/示证", "touch_temp": "触觉温度",
     "net_dial": "对话占比", "net_oral": "口语/千字", "net_short": "短句占比",
     "sent_p90": "长句p90", "sent_p10": "短句p10", "para_cv": "段长CV",
     "lit": "书面虚词", "act": "动作密度", "emo": "情绪外显",
@@ -403,7 +485,7 @@ BENCH_LABEL = {
     "sent_den": "句/千字", "tail": "段尾金句", "short": "单行短段",
     "ttr": "词汇多样性",
     "pron3": "第三人称代词", "pron_start": "代词起句率", "sent_med": "句长中位",
-    "g_turn": "转折连词",
+    "g_turn": "转折连词", "conn_lit": "书面连接词",
 }
 
 
@@ -445,25 +527,15 @@ ITEM_TARGET["cv"] = CV_RANGE
 # `act`（动作密度）与 `ttr`（词汇多样性）已退出打分，故此处不再给阈值；
 # 两个原始值仍由 metrics() 照常算出，供对照。
 
-# 达标是一个「区间」而不是单点的指标（落在区间内满分，越出区间扣分）。
-RANGE_KEYS = set(IMM_RANGE)
-
-
 def item_score(k, v):
     """单个指标的逐项分，0–10，越高越好。
 
-    区间型指标（imm_perc / imm_soma）落在区间内给 10 分，越出区间按距离扣分。
     没有阈值规范、或取值为 None 时返回 None（前端显示为 —）。
+    原「区间型」机制（落在区间内满分）已随代入感重定标删除：那两个指标
+    （imm_perc / imm_soma）改用与其余各维一致的单点阈值，公式由 good() 自带方向。
     """
     if v is None:
         return None
-    if k in RANGE_KEYS:
-        lo, hi = IMM_RANGE[k]
-        if lo <= v <= hi:
-            return 10.0
-        if v < lo:
-            return clamp(10 - (lo - v) / max(lo * 0.6, 1e-6) * 10)
-        return clamp(10 - (v - hi) / max(hi * 0.5, 1e-6) * 10)
     t = ITEM_TARGET.get(k)
     if t is None:
         return None
@@ -553,7 +625,6 @@ def imm_stats(body):
         "imm_perc": len(PERC.findall(body)) / k,
         "imm_cog": len(COG.findall(body)) / k,
         "imm_soma": len(SOMA.findall(body)) / k,
-        "imm_lim": len(LIM.findall(body)) / k,
     }
 
 
@@ -729,7 +800,11 @@ def metrics(body):
         "isde": len(ISDE.findall(body)) / k,
         "onomat": len(ONOMAT.findall(body)) / k,
         "space": len(SPACE.findall(body)) / k,
+        "dem_lit": len(DEM_LIT.findall(body)) / k,
         "breath": len(BREATH.findall(body)) / k,
+        "surprise": len(SURPRISE.findall(body)) / k,
+        "conn_lit": len(CONN_LIT.findall(body)) / k,
+        "touch_temp": len(TOUCH_TEMP.findall(body)) / k,
         "exclaim": len(EXCLAIM.findall(body)) / k,
         "redupl": len(REDUPL.findall(body)) / k,
         "comma_in": body.count("\uff0c") / k,
@@ -761,20 +836,12 @@ def score_real(m):
 
 
 def score_imm(m):
-    """代入感：0–10，越高越好。imm_perc / imm_soma 达标是区间，区间内满分。"""
-    s = {}
-    for key, (g, b) in IMM_GOOD_BAD.items():
-        if key in IMM_RANGE:
-            lo, hi = IMM_RANGE[key]
-            v = m[key]
-            if v < lo:
-                s[key] = clamp(10 - (lo - v) / max(lo * 0.6, 1e-6) * 10)
-            elif v > hi:
-                s[key] = clamp(10 - (v - hi) / max(hi * 0.5, 1e-6) * 10)
-            else:
-                s[key] = 10.0
-        else:
-            s[key] = good(m[key], g, b)
+    """代入感：0–10，越高越好。
+
+    四项各自「真人中位 → 10 分，AI 中位 → 0 分」，方向由 good() 内置：
+    breath / imm_perc / imm_soma 越低越好，imm_cog 越高越好。
+    """
+    s = {key: good(m[key], g, b) for key, (g, b) in IMM_GOOD_BAD.items()}
     return s, _wavg(s, IMM_WEIGHTS)
 
 

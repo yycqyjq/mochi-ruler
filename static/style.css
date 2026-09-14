@@ -223,7 +223,25 @@ textarea.on {
 }
 .mrow:last-child { border-bottom: none; }
 .mrow.head { background: var(--bg); font-size: 12px; color: var(--dim); font-weight: 600; }
-.mrow .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 指标名 + 口径说明问号。省略号必须落在内层文本上：.n 变成 flex 容器后，
+   直接对 .n 设 ellipsis 不再生效，长名字会把问号挤出可视区。 */
+.mrow .n { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.mrow .nlabel { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qi {
+  flex: none; width: 14px; height: 14px; padding: 0; margin: 0;
+  -webkit-appearance: none; appearance: none;
+  font-family: inherit; font-size: 10px; font-weight: 700; line-height: 12px;
+  text-align: center;
+  color: var(--dim); background: transparent;
+  border: 1px solid var(--line); border-radius: 50%;
+  cursor: help; user-select: none;
+  opacity: .45;
+  transition: opacity .12s, color .12s, border-color .12s;
+}
+.mrow:hover .qi { opacity: 1; }
+.qi:hover, .qi:focus-visible {
+  opacity: 1; color: var(--accent); border-color: var(--accent); outline: none;
+}
 .mrow .you, .mrow .bench { text-align: right; font-variant-numeric: tabular-nums; }
 .mrow .you.good { color: var(--good); }
 .mrow .you.warn { color: var(--warn); }
@@ -259,3 +277,25 @@ textarea.on {
 .toast.success { border-left: 3px solid var(--good); }
 .toast.error { border-left: 3px solid var(--bad); }
 .toast.warn { border-left: 3px solid var(--warn); }
+
+/* 逐项对比里 ? 的口径说明气泡。
+   必须 position:fixed：.metrics 有 overflow:hidden（为圆角裁切），
+   气泡若留在行内会被直接剪掉。位置由 app.js 按锚点矩形计算。 */
+.tip {
+  position: fixed; left: 0; top: 0; z-index: 60;
+  max-width: min(320px, calc(100vw - 24px));
+  padding: 9px 11px;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--card); color: var(--fg);
+  box-shadow: 0 8px 24px rgba(0,0,0,.16);
+  font-size: 12px; line-height: 1.6;
+  pointer-events: auto;
+}
+.tip-title { font-weight: 700; margin-bottom: 3px; }
+.tip-desc { opacity: .86; }
+.tip-raw {
+  margin-top: 6px; padding-top: 6px;
+  border-top: 1px dashed var(--line);
+  color: var(--dim); font-variant-numeric: tabular-nums;
+}
+
