@@ -113,6 +113,23 @@ def sample(paths, cap):
     return out
 
 
+def sample_by_book(paths, cap):
+    """与 sample 同口径，但**保留「本」的分组**（返回 [[metrics, ...], ...]）。
+
+    左尾检验需要「每本一个数」，池化后就看不见「某类作者被整本压下去」了。
+    """
+    out = []
+    for f in paths:
+        try:
+            t = open(f, encoding="utf-8", errors="ignore").read()
+        except Exception:
+            continue
+        ms = [q.metrics(b) for b in chapters(t, cap)]
+        if ms:
+            out.append(ms)
+    return out
+
+
 def corpus_report(paths, label, top, whole=False):
     """whole=True 表示每个文件是一本完整的书，这时才做「坏本」判定。
 
@@ -251,7 +268,8 @@ def main():
     if not hf or not af:
         sys.exit("剔除坏本后，真人组或 AI 组已无可用文件")
 
-    H = sample(hf, a.per)
+    HB = sample_by_book(hf, a.per)          # 保留「本」的分组，供左尾检验用
+    H = [m for ms in HB for m in ms]
     A = sample(af, None)
     R = sample(rf, None) if rf else []
     if a.ref_into_ai and R:
@@ -288,7 +306,7 @@ def main():
     hdr = (f"{'指标':<11}{'维':<5}{'真人中位':>9}{'AI中位':>8}"
            + (f"{'参照':>8}" if R else "")
            + f"{'分离度':>8}{'方向':>7}{'残差':>7}{'真人分':>7}{'AI分':>7}"
-             f"{'满分率 人/AI':>13}  判定")
+             f"{'满分率 人/AI':>13}{'真人<5':>7}  判定")
     print(hdr)
     print("-" * 112)
 
@@ -304,6 +322,17 @@ def main():
         hs_ = [x for x in hs_ if x is not None]
         as_ = [x for x in as_ if x is not None]
         fh, fa = fullrate(hs_), fullrate(as_)
+
+        # 真人侧左尾：每本先取中位、再折成项分，数 <5 的本数。
+        # sep 只测「排序」，看不见「某类作者被整本压下去」——这一列补的就是它。
+        bsc = []
+        for ms in HB:
+            vs = [m.get(k) for m in ms if m.get(k) is not None]
+            if vs:
+                g = q.item_score(k, st.median(vs))
+                if g is not None:
+                    bsc.append(g)
+        n5 = sum(1 for x in bsc if x < 5)
 
         if k in EXTRA:
             v = "备查未计分"
@@ -321,6 +350,8 @@ def main():
             v = "✗ 共线·句长回声"
         else:
             v = "· 弱"
+        if n5 >= 3 and k not in EXTRA:
+            v = f"⚠ 压真人 {n5} 本｜" + v
 
         line = (f"{k:<11}{dim:<5}{st.median(hv):>9.2f}{st.median(av):>8.2f}")
         if R:
@@ -329,7 +360,7 @@ def main():
                  f"{'  —  ' if rs is None else f'{rs:>5.2f}  ':>7}"
                  f"{(f'{st.median(hs_):.2f}' if hs_ else '  — '):>7}"
                  f"{(f'{st.median(as_):.2f}' if as_ else '  — '):>7}"
-                 f"{f'{fh:.0f}% / {fa:.0f}%':>13}  {v}")
+                 f"{f'{fh:.0f}% / {fa:.0f}%':>13}{n5:>7}  {v}")
         print(line)
 
     print("\n" + "=" * 112)
