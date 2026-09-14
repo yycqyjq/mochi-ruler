@@ -24,7 +24,7 @@
               典型用法：把自己写的正文挂在这里，看它落在哪一侧。
 
 输出五块：
-    1 语料体检    章数 / 章均字数 / 疑似合章或拆不出章的坏本
+    1 语料体检    章数 / 章均字数 / 疑似合章或拆不出章的坏本（**坏本已剔出判据**）
     2 逐项体检    分布、分离度、残差分离度、两侧满分率、判定
     3 五维与总分
     4 跨作品稳定  分离度是不是靠某一部撑起来的
@@ -76,13 +76,22 @@ def chapters(text, cap=None):
 
 
 def load(paths):
-    """路径可以是目录或文件，展开成文件列表。"""
+    """路径可以是目录或文件，展开成文件列表。
+
+    目录下的**隐藏文件与隐藏目录一律跳过**：语料目录里常常混着 `.workbuddy-ai`
+    / `.git` 这类工具目录，不筛就会把无关文本悄悄算进判据（实测 AI 组因此多出
+    1 块）。显式传进来的文件路径不做隐藏名过滤——那是用户自己指定的。
+    """
     out = []
     for p in paths:
         if os.path.isdir(p):
             for ext in ("*.txt", "*.md", "*.markdown"):
-                out += sorted(glob.glob(os.path.join(p, "**", ext),
-                                        recursive=True))
+                for f in sorted(glob.glob(os.path.join(p, "**", ext),
+                                          recursive=True)):
+                    rel = os.path.relpath(f, p)
+                    if any(seg.startswith(".") for seg in rel.split(os.sep)):
+                        continue
+                    out.append(f)
         elif os.path.isfile(p):
             out.append(p)
         else:
@@ -107,6 +116,10 @@ def corpus_report(paths, label, top, whole=False):
 
     AI 语料常常是分幕/分章的散文件（一个文件只有 1 章），按文件判
     「可用章过少」是误报，所以这类语料只报总量。
+
+    返回 (可用文件列表, 坏本列表)。**判据只用可用文件**——坏本（拆不出章 /
+    疑似合章）本身就是解析失败的产物，把它们算进分离度等于用垃圾数据体检尺子，
+    会把所有指标一起压低。只标注不剔除是 2026-09-14 之前的旧行为。
     """
     print(f"\n[{label}] {len(paths)} 个文件")
     rows = []
@@ -124,17 +137,22 @@ def corpus_report(paths, label, top, whole=False):
                 flag = "← 可用章过少"
             elif med > 6000:
                 flag = "← 章均异常大，疑似合章"
-        rows.append((len(big), med, os.path.basename(f)[:30], flag))
+        rows.append((len(big), med, os.path.basename(f)[:30], flag, f))
     show = rows if not top else rows[:top]
-    for n, m, name, flag in show:
+    for n, m, name, flag, _ in show:
         print(f"  {n:>6} 章  章均 {m:>7.0f} 字  {name}  {flag}")
+    bad = [r for r in rows if r[3]] if whole else []
+    kept = [r[4] for r in rows if not r[3]]
     if whole:
-        bad = [r for r in rows if r[3]]
         if bad:
-            print(f"  —— {len(bad)} 本不可用（建基准时应剔除）")
+            print(f"  —— {len(bad)} 本不可用，**已剔出判据**"
+                  f"（可用 {len(kept)} 本）")
+        else:
+            print(f"  —— {len(kept)} 本全部可用")
     else:
         print(f"  —— 合计 {sum(r[0] for r in rows)} 章"
               f"（散文件语料，不做坏本判定）")
+    return kept, bad
 
 
 # ---------------------------------------------------------------- 统计
@@ -224,10 +242,12 @@ def main():
     print("=" * 112)
     print("1 语料体检")
     print("=" * 112)
-    corpus_report(hf, "真人组", a.top, whole=True)
-    corpus_report(af, "AI 组", a.top)
+    hf, _ = corpus_report(hf, "真人组", a.top, whole=True)
+    af, _ = corpus_report(af, "AI 组", a.top)
     if rf:
-        corpus_report(rf, "参照组", a.top)
+        rf, _ = corpus_report(rf, "参照组", a.top)
+    if not hf or not af:
+        sys.exit("剔除坏本后，真人组或 AI 组已无可用文件")
 
     H = sample(hf, a.per)
     A = sample(af, None)
