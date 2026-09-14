@@ -89,7 +89,7 @@ FINGERPRINTS = {
 }
 
 FP2CODE = {v: k for k, v in FINGERPRINTS.items()}
-KEYS = list(server.SHOW)          # 42 项，顺序即 BENCHMARKS 字面量里的键序
+KEYS = list(server.SHOW)          # 39 项，顺序即 BENCHMARKS 字面量里的键序
 
 
 def keep_known(paths):
