@@ -61,7 +61,9 @@ sys.argv = _ARGV
 MINCH = 1200
 SHOW = server.SHOW
 DIM_OF = {k: d for d, tbl in server.DIM_ITEM_SRC.items() for k in tbl}
-EXTRA = ["act", "ttr", "net_short"]        # 不参与打分，只备查
+EXTRA = ["ttr", "net_short", "enum"]       # 不参与打分，只备查
+# `act` 2026-09-14 已入代入感维（在 server.SHOW 里），不再列于此——留着会重复输出一行。
+# `enum` 同日退出打分（真人侧左尾过重），补进这份「只备查」名单。
 
 
 # ---------------------------------------------------------------- 采样

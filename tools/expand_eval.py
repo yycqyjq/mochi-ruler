@@ -11,8 +11,14 @@
     新指标的 sep（且残差 sep）必须 ≥ 该维现有的加权平均 sep，
     加进去才是净收益；低于这条线就是净损失。
 
-而墨尺五维现在的 sep 已在 0.88–1.00 —— 余量极小，多数候选都会是负收益。
-**所以本工具的主要作用是「劝退」，不是「找新指标」。**
+⚠️ 但 sep 只测「排序」，测不出「真人侧绝对分的左尾」（误伤）。2026-09-14 的
+教训：按 sep 配权会把「sep 高却压真人」的项权重抬上去 —— 实测「权重 ∝ sep」
+让真人感维 sep 涨 0.0092，真人逐本最低分却掉 0.20。**sep 不是唯一目标。**
+所以本工具同时报「真人 24 本里有几本项分 <5 / <3」：
+
+    · sep 低但真人侧全满分 → 死项，删了只省计算，不救任何人
+    · sep 高但压真人       → 风格税，降权或改阈值
+    · sep 涨 + 左尾不恶化   → 这才是净收益（`act` 入代入感维即此类）
 
 用法：
     python3 tools/expand_eval.py --human <真人语料> --ai <AI语料> [--ai ...]
@@ -27,7 +33,7 @@
 输出：
     1 各维当前分离度（基线）
     2 每个候选：真人跨本中位 / AI 中位 / sep / 残差 sep / 与目标维现有项的最大相关
-      / 按该维平均权重加进去后的 Δ维sep
+      / 按该维平均权重加进去后的 Δ维sep / **真人侧左尾（几本 <5、几本 <3）**
     3 一行纯噪声对照 —— **对照若也是正的，说明余量为零，任何 Δ 都在噪声里**
 
 只依赖 Python 标准库。统计函数复用 tools/audit.py，维度分复算与 score_* 逐位自检。
@@ -296,10 +302,10 @@ def main():
     def pooled(blocks, key):
         return [m[key] for _, ms in blocks for m in ms if m.get(key) is not None]
 
-    print("=" * 100)
+    print("=" * 112)
     print(f"{'候选指标':<12}{'目标维':<7}{'真人中位':>10}{'AI中位':>9}{'sep':>7}"
-          f"{'残差':>7}{'最大相关':>9}{'Δ维sep':>9}   说明")
-    print("=" * 100)
+          f"{'残差':>7}{'最大相关':>9}{'Δ维sep':>9}{'真人<5':>7}{'<3':>5}   说明")
+    print("=" * 112)
     rows = []
     for key, fn, dim, desc in cands:
         hm = st.median(book_med(key))
@@ -317,14 +323,25 @@ def main():
         wavg = st.mean(list(DIMS[dim][1].values()))
         hs2 = [dim_score(m, dim, (key, m.get(key), tgt, am), wavg) for m in H]
         as2 = [dim_score(m, dim, (key, m.get(key), tgt, am), wavg) for m in A]
+        # 真人侧左尾：每本取中位后折成项分，数 <5 / <3 的本数。
+        # sep 测不出这个——它只看排序，看不见「某类作者被整本压下去」。
+        bsc = []
+        for _, ms in HB:
+            vs = [m[key] for m in ms if m.get(key) is not None]
+            if vs:
+                g = q.good(st.median(vs), tgt, am)
+                if g is not None:
+                    bsc.append(g)
+        n5 = sum(1 for x in bsc if x < 5)
+        n3 = sum(1 for x in bsc if x < 3)
         rows.append((key, dim, hm, am, s, rs, mx,
-                     audit.sep(hs2, as2) - base[dim], desc))
+                     audit.sep(hs2, as2) - base[dim], desc, n5, n3))
 
-    for key, dim, hm, am, s, rs, mx, dd, desc in rows:
+    for key, dim, hm, am, s, rs, mx, dd, desc, n5, n3 in rows:
         nm = "噪声对照" if key == "__noise__" else key
         rss = f"{rs:.3f}" if rs is not None else "  —  "
         print(f"{nm:<12}{DIMNAME[dim]:<7}{hm:>10.4f}{am:>9.4f}{s:>7.3f}"
-              f"{rss:>7}{mx:>9.3f}{dd:>+9.4f}   {desc}")
+              f"{rss:>7}{mx:>9.3f}{dd:>+9.4f}{n5:>7}{n3:>5}   {desc}")
 
     noise = [r for r in rows if r[0] == "__noise__"]
     print()
@@ -346,8 +363,17 @@ def main():
               f"{'—' if b2[5] is None else round(b2[5], 3)}，Δ={b2[7]:+.4f}）")
     else:
         print("  「既独立又有信号」的候选：本批一个都没有。")
+    hurt = [r for r in rows if r[0] != "__noise__" and r[9] > 0]
+    if hurt:
+        s_ = "、".join(f"{r[0]}({r[9]}本)" for r in sorted(hurt, key=lambda r: -r[9]))
+        print(f"  ⚠ 压真人的候选（真人逐本项分 <5 的本数）：{s_}")
+        print("     左尾越重越像「风格税」——降权或改阈值，别只看 sep。")
+    else:
+        print("  真人侧左尾：本批所有候选都没把任何一本真人压到 5 分以下。")
     print("  维度 sep 已接近 1 时，任何候选都救不了区分度——"
           "这时扩维度的价值在「换轴覆盖新失败模式」，不在提升分离度。")
+    print("  ⚠ 反过来也一样：sep 涨不等于改对了。按 sep 配权实测能把 sep 抬 0.0092，"
+          "同时把真人逐本最低分压低 0.20。**左尾与 sep 一起看。**")
 
 
 if __name__ == "__main__":

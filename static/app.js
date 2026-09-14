@@ -153,11 +153,11 @@ function renderScores(d) {
 // 前端必须内置一份：接口若没带 dimitems（旧版后端 / 字段缺失），
 // 筛选会退化成「选了等于没选」的静默空操作。
 const DIM_ITEMS_FALLBACK = {
-  real: ['vague', 'nego', 'dash', 'rev', 'enum', 'simile', 'sent_den',
+  real: ['vague', 'nego', 'dash', 'rev', 'simile', 'sent_den',
     'para_med', 'short_run', 'tail', 'bold', 'dede', 'isde', 'onomat',
     'space', 'short', 'tell', 'cv', 'dem_lit'],
   human: ['emo', 'net_oral', 'dial_sent', 'exclaim', 'redupl', 'question', 'emo_type'],
-  imm: ['imm_cog', 'imm_perc', 'imm_soma', 'breath', 'surprise', 'touch_temp'],
+  imm: ['imm_cog', 'imm_perc', 'imm_soma', 'breath', 'surprise', 'touch_temp', 'act'],
   rhy: ['sent_p90', 'sent_p10', 'comma_in', 'lit', 'para_cv'],
   syn: ['pron3', 'pron_start', 'sent_med', 'g_turn', 'conn_lit'],
 };
