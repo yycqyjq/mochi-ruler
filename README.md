@@ -160,7 +160,9 @@ mochi-ruler/
 │   ├── audit.py         开发工具：全指标区分度体检（不参与服务运行）
 │   ├── calibrate.py     开发工具：按统一公式标定阈值（真人/AI 中位 → 达标/超标）
 │   ├── bench_build.py   开发工具：重建 BENCHMARKS（代号按内容指纹认领）
-│   └── layout_scan.py   开发工具：扫描哪些指标其实在量排版而不是量笔法
+│   ├── layout_scan.py   开发工具：扫描哪些指标其实在量排版而不是量笔法
+│   ├── sent_scan.py     开发工具：扫描哪些指标其实在量引号碎片而不是量笔法
+│   └── regress.py       开发工具：零回归（同 harness 跑两棵树的评分核心）
 ├── static/
 │   ├── index.html       前端页面
 │   ├── style.css        样式（支持明暗主题）
@@ -199,14 +201,18 @@ python3 tools/bench_build.py --corpus ~/标杆文章 --verify
 # 扫排版噪声：哪些指标其实在量排版（全角缩进/空行）而不是量笔法
 python3 tools/layout_scan.py --human ~/标杆文章 --ai ~/AI语料
 
+# 扫引号碎片：哪些句子类指标其实在量引号切出来的碎片而不是量笔法
+python3 tools/sent_scan.py --human ~/标杆文章 --ai ~/AI语料
+
 # 零回归：改动前后用同一批素材跑 server.analyze，逐字段比对
 python3 tools/regress.py --corpus ~/语料 --per 20 --dump /tmp/base.json
 python3 tools/regress.py --compare /tmp/base.json /tmp/new.json --allow redupl
 ```
 
-- `calibrate.py` 的 `--fp` 只保留基准里登记过的 24 本，**标定阈值时必须开**——标杆目录里另有 5 本不可用的，不筛会把真人中位算歪。`--per` 默认 100，必须与 `bench_build.py` 的 `PERBOOK` 一致。
+- `calibrate.py` 的 `--fp` 只保留基准里登记过的 24 本，**标定阈值时必须开**——标杆目录里另有 5 本不可用的，不筛会把真人中位算歪。`--per` 默认 100，必须与 `bench_build.py` 的 `PERBOOK` 一致。`--ai` 可以空格连写也可以重复传，两者等价。
 - `bench_build.py` 的代号靠**内容指纹**认领，不靠文件名或排序位置：目录里多一本书就会让位置式代号全体错位，而分数看起来完全正常。24 本没找齐会直接报错退出，不产出半成品。
 - `layout_scan.py` 是「格式噪声必须排除」这条铁律的执行工具：它把每个指标分别在原样正文与剥掉全角缩进后的正文上算分离度，Δ 大的说明该指标在量排版。**任何新指标入库前都该先过这道扫描**——`head` 就是在这里露的馅（原样 0.92，去缩进 0.09）。同样支持 `--fp`。
+- `sent_scan.py` 是同一铁律的**另一半**：`sentences()` 按 `。！？…` 切分，`“我知道了。”他点点头。` 会被切成 `“我知道了` 与 `”他点点头`，第二段的真实句首被 `”` 挡住。这类污染换字体、换缩进都消不掉，`layout_scan.py` 扫不出来，只能用本工具测。它把每个句子类指标分别在「原样切句」与「先剥掉引号字符再切句」下算分离度，Δ ≥ +0.03 的值得单独重标定。
 - `regress.py` 的判据不是「输出完全一样」（那等于没改），而是**漂移全部落在 `--allow` 白名单内**。`--tree` 可以指到旧 commit 的 worktree，用同一套 harness 跑两棵树的评分核心。
 
 ## 设计取舍
@@ -275,10 +281,11 @@ AI 的叙述像一台摄像机：谁站在哪、看着什么、光落在哪，�
 6. `server.py` 的 `DESC_TEXT` —— 逐项对比 `?` 的口径说明
 7. `static/app.js` 的 `DIM_ITEMS_FALLBACK` 与 `index.html` / `README.md` 的项数文案
 
-另外三条硬性要求：
+另外四条硬性要求：
 
 - **新指标必须过残差检验**（见上文），否则大概率只是句长的回声
 - **指标必须在去掉排版噪声后仍然有区分度**：真人语料段首常带全角缩进、AI 语料不带，任何会被这个差异影响的指标都是在量排版而不是量笔法。入库前用 `tools/layout_scan.py` 扫一遍
+- **句子类指标必须过引号碎片检验**：凡是用到 `sentences()`（或拿 `len(ss)` 当分母）的指标，都要确认不是在量引号切出来的碎片——用 `tools/sent_scan.py` 扫一遍。同一句对话里的引号与 `。！？…` 会把一句切成两段，第二段的真实句首被 `”` 挡住
 - **改完要跑零回归**：用同一批素材跑 `server.analyze` 前后对比，确认变更只落在预期字段，其余逐字节一致（`tools/regress.py`）
 
 ### 约定
