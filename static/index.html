@@ -84,7 +84,7 @@
         <div id="empty" class="empty">
           <div class="empty-icon">尺</div>
           <p>左侧粘贴正文，点「开始检测」</p>
-          <p class="dim">41 项指标各 0–10 分 · 逐项对照基准 · 不改动你的文件</p>
+          <p class="dim">42 项指标各 0–10 分 · 逐项对照基准 · 不改动你的文件</p>
         </div>
 
         <div id="result" hidden>
@@ -94,7 +94,10 @@
 
           <div class="scores" id="scores"></div>
 
-          <h3>逐项对比 <span class="dim" id="mcount"></span></h3>
+          <h3 class="mhead">逐项对比 <span class="dim" id="mcount"></span>
+            <button type="button" class="copybtn" id="copybtn"
+              title="把维度总分与逐项对比复制成一张表，方便贴出去排查">复制表格</button>
+          </h3>
           <div class="metrics" id="metrics"></div>
 
           <h3 id="chtitle">逐章</h3>

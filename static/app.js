@@ -156,7 +156,7 @@ const DIM_ITEMS_FALLBACK = {
   real: ['vague', 'nego', 'dash', 'rev', 'enum', 'simile', 'sent_den',
     'para_med', 'short_run', 'tail', 'bold', 'dede', 'isde', 'onomat',
     'space', 'short', 'head', 'tell', 'cv', 'dem_lit'],
-  human: ['emo', 'net_oral', 'net_dial', 'exclaim', 'redupl'],
+  human: ['emo', 'net_oral', 'net_dial', 'exclaim', 'redupl', 'question'],
   imm: ['imm_cog', 'imm_perc', 'imm_soma', 'breath', 'surprise', 'touch_temp'],
   rhy: ['sent_p90', 'sent_p10', 'comma_in', 'lit', 'para_cv'],
   syn: ['pron3', 'pron_start', 'sent_med', 'g_turn', 'conn_lit'],
@@ -173,26 +173,63 @@ function dimItemsOf(d) {
 // 这里把气泡内容存进 TIPDATA，? 上只放指标键，避免把长文本塞进 data 属性。
 let TIPDATA = {};
 
-function renderMetrics(d) {
+// 合并表的数据源：维度总分行（含总分）+ 逐项行，渲染与复制共用，
+// 保证屏幕上看到的和复制出去的永远一致。维度筛选（dimSel）在这里生效：
+// 有选中维度时，维度行只保留总分 + 选中维度，逐项行只保留这些维度覆盖的指标。
+function buildTableRows(d) {
   const s = d.summary;
   const dimitems = dimItemsOf(d);
   const covered = new Set(d.dims.flatMap(k => dimitems[k] || []));
   const orphans = d.items.filter(k => !covered.has(k));
-  let keys = d.items;
   const active = d.dims.filter(k => dimSel.has(k));
+  const dimKeys = ['total', ...(active.length ? active : d.dims)];
+  const dimRows = dimKeys.map(k => {
+    const isTotal = k === 'total';
+    return {
+      kind: 'dim', key: k,
+      name: isTotal ? '总分' : (d.dimlabel[k] || k),
+      you: isTotal ? s.total : s[k],
+      bench: isTotal ? d.bench.total : d.bench[k],
+    };
+  });
+  let keys = d.items;
   if (active.length) {
     const allow = new Set(active.flatMap(k => dimitems[k] || []));
     keys = d.items.filter(k => allow.has(k) || orphans.includes(k));
   }
+  const itemRows = keys.map(k => ({
+    kind: 'item', key: k,
+    name: (d.label && d.label[k]) || k,
+    you: s.items[k], bench: d.bench.items[k],
+  }));
+  return { dimRows, itemRows, itemCount: keys.length, orphanCount: orphans.length };
+}
+
+function renderMetrics(d) {
+  const { dimRows, itemRows, itemCount, orphanCount } = buildTableRows(d);
+  const active = d.dims.filter(k => dimSel.has(k));
   $('#mcount').textContent = active.length
-    ? `（${keys.length} / ${d.items.length} 项 · 只显示选中维度${orphans.length ? '，含通用项' : ''}）`
-    : `（${keys.length} 项 · 满分 10）`;
-  let rows = '<div class="mrow head"><div class="n">指标</div>' +
+    ? `（${itemCount} / ${d.items.length} 项 · 只显示选中维度${orphanCount ? '，含通用项' : ''}）`
+    : `（${itemCount} 项 · 满分 10）`;
+  let rows = '<div class="mrow head"><div class="n">项目</div>' +
     '<div class="you">你的分</div><div class="bench">标杆</div><div class="tag">判定</div></div>';
+  // 维度总分行：加深底色、加粗，先给整体结论再往下看逐项。
+  for (const r of dimRows) {
+    const j = itemTag(r.you, r.bench);
+    const cls = (r.you === null || r.you === undefined) ? '' : scCls(r.you);
+    rows += `<div class="mrow dimrow">
+      <div class="n"><span class="nlabel">${r.name}</span></div>
+      <div class="you ${cls}">${num(r.you, 2)}</div>
+      <div class="bench">${num(r.bench, 2)}</div>
+      <div class="tag">${j.tag}</div>
+    </div>`;
+  }
+  rows += '<div class="msep">逐项对比 · 每项满分 10，越高越好</div>';
   TIPDATA = {};
-  for (const k of keys) {
-    const you = s.items[k], bench = d.bench.items[k];
-    const raw = s.metrics[k], rawB = d.bench.metrics[k];
+  for (const r of itemRows) {
+    const k = r.key;
+    const you = r.you, bench = r.bench;
+    const raw = d.summary.metrics[k], rawB = d.bench.metrics[k];
     const j = itemTag(you, bench);
     const cls = (you === null || you === undefined) ? '' : scCls(you);
     const desc = (d.desc && d.desc[k]) || '';
@@ -214,13 +251,54 @@ function renderMetrics(d) {
         ` aria-label="${d.label[k] || k} 的口径说明">?</button>`
       : '';
     rows += `<div class="mrow ${j.cls}">
-      <div class="n"><span class="nlabel">${d.label[k]}</span>${qi}</div>
+      <div class="n"><span class="nlabel">${r.name}</span>${qi}</div>
       <div class="you ${cls}">${num(you)}</div>
       <div class="bench">${num(bench)}</div>
       <div class="tag">${j.tag}</div>
     </div>`;
   }
   $('#metrics').innerHTML = rows;
+}
+
+/* 复制表格 ---------------------------------------------------------------
+   把合并表复制成制表符分隔的纯文本，可直接贴进表格软件或聊天窗口，
+   方便把一次检测结果带出去排查。数据源与渲染共用 buildTableRows，
+   当前维度筛选选了什么，复制出来的就是什么。 */
+function buildCopyText(d) {
+  const { dimRows, itemRows } = buildTableRows(d);
+  const s = d.summary;
+  const lines = [
+    `墨尺检测 · ${s.chapters} 章 · ${s.chars.toLocaleString()} 字`,
+    ['项目', '你的分', '标杆', '判定'].join('\t'),
+  ];
+  for (const r of dimRows) {
+    lines.push([r.name, num(r.you, 2), num(r.bench, 2),
+      itemTag(r.you, r.bench).tag].join('\t'));
+  }
+  lines.push('—— 逐项对比 ——');
+  for (const r of itemRows) {
+    lines.push([r.name, num(r.you), num(r.bench),
+      itemTag(r.you, r.bench).tag].join('\t'));
+  }
+  return lines.join('\n');
+}
+
+// 剪贴板写入：优先 async clipboard API（本服务只跑在 127.0.0.1，属于安全上下文，
+// 一般都走这条）；失败或 API 不存在时退回隐藏 textarea + execCommand。
+async function copyText(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    try { await navigator.clipboard.writeText(text); return true; } catch (e) { /* 走兜底 */ }
+  }
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed';
+  ta.style.left = '-9999px';
+  document.body.appendChild(ta);
+  ta.select();
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+  ta.remove();
+  return ok;
 }
 
 /* ? 的口径说明气泡 ------------------------------------------------------
@@ -566,6 +644,19 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#theme').onclick = theme;
   $('#source-remove').onclick = removeSource;
   $('#run').onclick = run;
+  // 复制表格：把维度总分 + 逐项对比复制成一张 TSV 表（含章数 / 字数头行），
+  // 数据源与渲染共用 buildTableRows，当前筛选到什么就复制什么。
+  $('#copybtn').onclick = async () => {
+    if (!LAST) return;
+    const ok = await copyText(buildCopyText(LAST));
+    if (ok) {
+      const btn = $('#copybtn'), old = btn.textContent;
+      btn.textContent = '已复制';
+      setTimeout(() => { btn.textContent = old; }, 1400);
+    } else {
+      popup('复制失败', '浏览器没有放行剪贴板写入，请手动选中表格内容复制。', 'error');
+    }
+  };
   // 点维度卡切换选中；选中后逐项对比只显示这些维度覆盖的指标。
   $('#scores').addEventListener('click', e => {
     const el = e.target.closest('.sc[data-dim]');

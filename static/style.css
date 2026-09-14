@@ -251,6 +251,29 @@ textarea.on {
 .mrow.no .tag { color: var(--bad); }
 .mrow.mid .tag { color: var(--warn); }
 
+/* 维度总分并入同一张表：前 6 行是 总分 + 五维，底色区分于逐项行。 */
+.mrow.dimrow { background: var(--bg); }
+.mrow.dimrow .nlabel { font-weight: 600; }
+/* 「逐项」分隔行：占满整行，把总账与逐项隔开。 */
+.msep {
+  padding: 5px 12px; font-size: 11px; color: var(--dim);
+  background: var(--bg); border-bottom: 1px solid var(--line);
+  letter-spacing: .04em;
+}
+/* 标题行的复制按钮：贴右，平时低调，悬停才亮。 */
+.mhead { display: flex; align-items: baseline; gap: 8px; }
+.mhead .copybtn { margin-left: auto; }
+.copybtn {
+  -webkit-appearance: none; appearance: none; font-family: inherit;
+  font-size: 12px; line-height: 1.4; padding: 3px 10px; cursor: pointer;
+  color: var(--dim); background: transparent;
+  border: 1px solid var(--line); border-radius: 999px;
+  transition: color .12s, border-color .12s;
+}
+.copybtn:hover, .copybtn:focus-visible {
+  color: var(--accent); border-color: var(--accent); outline: none;
+}
+
 .chapters { display: flex; flex-direction: column; gap: 6px; }
 .crow {
   display: grid; grid-template-columns: 1fr 58px 58px 58px 58px 58px 58px 52px;
