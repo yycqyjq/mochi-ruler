@@ -61,9 +61,12 @@ sys.argv = _ARGV
 MINCH = 1200
 SHOW = server.SHOW
 DIM_OF = {k: d for d, tbl in server.DIM_ITEM_SRC.items() for k in tbl}
-EXTRA = ["ttr", "net_short", "enum"]       # 不参与打分，只备查
+EXTRA = ["ttr", "net_short", "enum",
+         "imm_cog", "imm_perc", "imm_soma"]     # 不参与打分，只备查
 # `act` 2026-09-14 已入代入感维（在 server.SHOW 里），不再列于此——留着会重复输出一行。
 # `enum` 同日退出打分（真人侧左尾过重），补进这份「只备查」名单。
+# `imm_cog` / `imm_perc` / `imm_soma` 同日退出打分（理由同为「sep 低 + 压真人」），
+# 一并补进来——体检报告仍能看到它们，下次复核时不必重挖。
 
 
 # ---------------------------------------------------------------- 采样
