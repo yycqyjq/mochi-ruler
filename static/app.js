@@ -155,7 +155,7 @@ function renderScores(d) {
 const DIM_ITEMS_FALLBACK = {
   real: ['vague', 'nego', 'dash', 'rev', 'enum', 'simile', 'sent_den',
     'para_med', 'short_run', 'tail', 'bold', 'dede', 'isde', 'onomat',
-    'space', 'short', 'head', 'tell', 'cv', 'dem_lit'],
+    'space', 'short', 'tell', 'cv', 'dem_lit'],
   human: ['emo', 'net_oral', 'dial_sent', 'exclaim', 'redupl', 'question', 'emo_type'],
   imm: ['imm_cog', 'imm_perc', 'imm_soma', 'breath', 'surprise', 'touch_temp'],
   rhy: ['sent_p90', 'sent_p10', 'comma_in', 'lit', 'para_cv'],
