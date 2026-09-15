@@ -158,7 +158,7 @@ const DIM_ITEMS_FALLBACK = {
     'space', 'short', 'tell', 'cv', 'dem_lit'],
   human: ['emo', 'net_oral', 'dial_sent', 'exclaim', 'redupl', 'question', 'emo_type'],
   imm: ['breath', 'surprise', 'touch_temp', 'act'],
-  rhy: ['sent_p90', 'sent_p10', 'comma_in', 'lit', 'para_cv'],
+  rhy: ['sent_p90', 'sent_p10', 'comma_in', 'lit', 'para_cv', 'punc_den'],
   syn: ['pron3', 'pron_start', 'sent_med', 'g_turn', 'conn_lit'],
 };
 
