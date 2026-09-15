@@ -163,7 +163,8 @@ mochi-ruler/
 │   ├── layout_scan.py   开发工具：扫描哪些指标其实在量排版而不是量笔法
 │   ├── sent_scan.py     开发工具：扫描哪些指标其实在量引号碎片而不是量笔法
 │   ├── expand_eval.py   开发工具：评估再加一个指标对该维分离度的净收益
-│   └── regress.py       开发工具：零回归（同 harness 跑两棵树的评分核心）
+│   ├── regress.py       开发工具：零回归（同 harness 跑两棵树的评分核心）
+│   └── narrative.py     开发工具：叙事结构诊断视图（**不进打分**，只给作者看结构）
 ├── static/
 │   ├── index.html       前端页面
 │   ├── style.css        样式（支持明暗主题）
@@ -190,6 +191,12 @@ python3 tools/audit.py --human ~/books --ai ~/ai --ref ~/mine --top 20
 
 每个指标给出四件事：**分布**、**分离度**（= 2×|AUC−0.5|，方向无关）、**残差分离度**（控制句长后，用来识破「短句化」的回声）、**两侧满分率**（≥ 95% 就是扣不动分的死项）。
 
+⚠ **退了打分的项，体检报告里仍然看得到**：`audit.py` 的 `EXTRA` 名单
+（`ttr` / `net_short` / `enum` / `imm_cog` / `imm_perc` / `imm_soma`）是「不参与打
+分、只备查」的项——退项后把它们补进来，下次复核就不必重新挖一遍。
+`metrics()` 也照常算出它们的原始值（所以是 **47 键 = 40 项 + `chars` + 这 6 项**），
+只是 `server.SHOW` 不展示、不进分。
+
 ### 其余开发工具
 
 ```bash
@@ -211,7 +218,15 @@ python3 tools/expand_eval.py --human ~/标杆文章 --ai ~/AI语料 --fp
 # 零回归：改动前后用同一批素材跑 server.analyze，逐字段比对
 python3 tools/regress.py --corpus ~/语料 --per 20 --dump /tmp/base.json
 python3 tools/regress.py --compare /tmp/base.json /tmp/new.json --allow redupl
+
+# 叙事结构诊断：换一个轴看自己的文本结构（逐句分类 → 类型序列 → 转移统计）
+python3 tools/narrative.py ~/正文.md --window 2000 --step 1000
 ```
+
+⚠ `narrative.py` 是**诊断视图，不是指标**：它算出的 6 个叙事候选 `sep` 全部 ≤0.48，
+最高的一条还是已有项 `act` 的回声，所以它**不进五维、不进 `server.SHOW`、不碰
+`BENCHMARKS`**。它同时也是外部 `ai_detector_ext.py`（3 模块 18 规则）的修正版，
+保留其唯一站得住的设计思路，修掉 6 处缺陷（见文件头）。
 
 - `calibrate.py` 的 `--fp` 只保留基准里登记过的 24 本，**标定阈值时必须开**——标杆目录里另有 5 本不可用的，不筛会把真人中位算歪。`--per` 默认 100，必须与 `bench_build.py` 的 `PERBOOK` 一致。`--ai` 可以空格连写也可以重复传，两者等价。
 - `bench_build.py` 的代号靠**内容指纹**认领，不靠文件名或排序位置：目录里多一本书就会让位置式代号全体错位，而分数看起来完全正常。24 本没找齐会直接报错退出，不产出半成品。
@@ -283,11 +298,23 @@ AI 的叙述像一台摄像机：谁站在哪、看着什么、光落在哪，�
 
 1. `qc_core.py` 的 `metrics()` —— 加正则与原始值
 2. `qc_core.py` 的阈值表（`*_GOOD_BAD`）与权重表（`*_WEIGHTS`）
-3. `qc_core.py` 的 `BENCH_LABEL` —— 中文名
+3. `qc_core.py` 的 `BENCH_LABEL` —— 中文名。⚠ 它**不是中文名的唯一来源**：另有 8 项
+   （`dede` / `isde` / `onomat` / `space` / `breath` / `exclaim` / `redupl` /
+   `comma_in`）写在 `server.py` 的 `_RAW.update` 里。加**新**项时写进 `BENCH_LABEL` 即可，
+   但那 8 项的历史分裂别再复制
 4. `qc_core.py` 的 `BENCHMARKS` —— 24 本基准都要补上同一个键。**用 `tools/bench_build.py` 重建，不要手改**：手改容易只补一部分，而漏键会让接口直接 500
 5. `server.py` 的 `SHOW` —— 展示清单与顺序
 6. `server.py` 的 `DESC_TEXT` —— 逐项对比 `?` 的口径说明
 7. `static/app.js` 的 `DIM_ITEMS_FALLBACK` 与 `index.html` / `README.md` 的项数文案
+
+改完启动服务时，`server.py` 会跑**三条启动自检**，缺口都在 stderr 打 `[warn]` 点名：
+
+- 展示项缺 `DESC_TEXT` 口径说明
+- 展示项缺 `LABEL` 中文名
+- 展示项在 `metrics()` 里取不到（**缺键接口会直接 500**，改正则时最容易踩）
+
+⚠ `LABEL` 与 `DESC_TEXT` 的兜底都是 `if k in` 过滤 —— **漏了不会报错**，只会静默留空，
+所以改完要看一眼 stderr。
 
 另外六条硬性要求：
 

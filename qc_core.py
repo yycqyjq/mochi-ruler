@@ -385,7 +385,7 @@ HUMAN_GOOD_BAD = {
     # ⚠ 这四项的「真人跨本中位」用 2026-09-14 的工具复现不出来（实测 emo 4.04 /
     # net_oral 1.58 / exclaim 3.23 / question 10.82，与记录差 3%–13%），它们的
     # AI 中位却能逐位复现——说明 AI 口径没错，是真人侧那一轮之后语料/正则又动过。
-    # **本轮不动它们**（改了会连带改动整个真人感的分数水位），但记在这里：
+    # **本轮不动它们**（改了会连带改动整个人味维的分数水位），但记在这里：
     # 下次整轮回标定时，这四项的真人中位要一并重算。
     # 注 exclaim 风格脆弱（B13/B14/B18 三本真人书感叹号≈0）的问题由
     # **降权**处理（见 HUMAN_WEIGHTS 注），达标线仍按统一公式走。
@@ -576,13 +576,21 @@ BENCHMARKS = {
 # env_* / imm_static 时已拆掉一半。
 BENCH_LABEL = {
     # 五维的中文名（不参与 LABEL 取值，留作维度文档）。
-    "real": "真人感", "human": "人味", "imm": "代入感", "rhythm": "节奏",
+    # ⚠ 键名必须与 `DIM_WEIGHTS` / `server.DIMS` 一致 —— 是 `rhy`，不是 `rhythm`。
+    # 这里曾写作 `"rhythm"`，而被删的 `check()` 照抄了这个键去取 `DIM_WEIGHTS[...]`，
+    # 一调用就 `KeyError: 'rhy'`（见上方 CHECK 删除记录）。留着就是留个陷阱。
+    "real": "真人感", "human": "人味", "imm": "代入感", "rhy": "节奏",
     "syn": "句法",
     # 逐项中文名。**只保留在展示清单（server.SHOW）里的项**——
     # `head`（已删）、`enum`（2026-09-14 退出打分，理由是真人侧左尾过重）、
     # `imm_cog` / `imm_perc` / `imm_soma`（同日退出打分，理由同为真人侧左尾，
     # 见 IMM_GOOD_BAD 上方的整轮回标定记录）、`ttr` / `net_short`（只算原始值
     # 备查）的条目一律清掉：LABEL 只按 SHOW 取值，留着永不出现。
+    #
+    # ⚠ 这张表**不是中文名的唯一来源**。另有 8 项的中文名写在 `server.py` 的
+    # `_RAW.update` 里（dede / isde / onomat / space / breath / exclaim /
+    # redupl / comma_in），`server.LABEL` 是两者合并后再按 SHOW 过滤的结果。
+    # 加**新**指标时中文名写进这张表即可；但那 8 项的历史分裂别再复制。
     "rev": "反转句/千字", "simile": "明喻/千字",
     "dash": "破折号收束", "bold": "正文加粗", "cv": "句长CV",
     "dem_lit": "古典指示词",
