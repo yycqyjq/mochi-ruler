@@ -145,10 +145,16 @@ def _raw_dir(k):
 DESC = {k: DESC_TEXT[k] for k in SHOW if k in DESC_TEXT}
 RAW_DIR = {k: _raw_dir(k) for k in SHOW}
 
-_missing = [k for k in SHOW if k not in DESC_TEXT]
-if _missing:
-    # 不静默：加新指标时忘了补口径说明，必须在这里被看见。
-    print('[warn] SHOW 里有指标缺口径说明 DESC_TEXT：%s' % '、'.join(_missing),
+# 启动自检一：展示项必须同时有「口径说明」和「中文名」。
+# 两处兜底都是 `if k in` 过滤 —— 漏了不会报错，只会静默留空，
+# 所以必须在这里点名。加新指标时最容易漏的就是这两张表。
+_missing_desc = [k for k in SHOW if k not in DESC_TEXT]
+if _missing_desc:
+    print('[warn] SHOW 里有指标缺口径说明 DESC_TEXT：%s' % '、'.join(_missing_desc),
+          file=sys.stderr)
+_missing_label = [k for k in SHOW if k not in LABEL]
+if _missing_label:
+    print('[warn] SHOW 里有指标缺中文名 LABEL：%s' % '、'.join(_missing_label),
           file=sys.stderr)
 
 # 每个维度覆盖哪些展示指标，直接取自该维的权重表 —— 打分口径一变，
@@ -157,6 +163,25 @@ DIM_ITEM_SRC = {'real': q.WEIGHTS, 'human': q.HUMAN_WEIGHTS,
                 'imm': q.IMM_WEIGHTS, 'rhy': q.RHY_WEIGHTS,
                 'syn': q.SYN_WEIGHTS}
 DIM_ITEMS = {k: [m for m in SHOW if m in w] for k, w in DIM_ITEM_SRC.items()}
+
+# 启动自检二：展示项必须在 `metrics()` 里真的取得到。
+# `analyze` 用 `m[k]` 直取（缺键就报错，**不兜底**）—— 而 `metrics()` 对
+# **任何输入**都无条件产出全部键（空串 / 单字 / 短句实测都是 47 键），
+# 所以「缺键」只可能是代码写错（正则改名、误删一行），拿一段样本正文就能
+# 在启动时抓出来，不必等某个请求炸掉。
+#
+# ⚠⚠ 这里原先写的是 `m.get(k, 0)`。那个兜底必须去掉：**40 项里有 22 项在
+# 原始值为 0 时恰好给满分 10**（vague / nego / dash / rev / simile / sent_den /
+# short_run / tail / bold / dede / isde / onomat / space / short / tell /
+# punc_den / breath / touch_temp / act / pron3 / pron_start / conn_lit），
+# 于是「提取被改坏」会被伪装成「满分」——正是本仓给外部检测器点名的
+# 「特征缺失输出满分」缺陷原型（见 .workbuddy/notes/probes/mochi_ext23_defects.py）。
+# README 也早已声明「漏键会让接口直接 500」，兜底是在跟这个设计意图打架。
+_probe = q.metrics("他走了。")
+_missing_metric = [k for k in SHOW if k not in _probe]
+if _missing_metric:
+    print('[warn] SHOW 里有指标在 metrics() 里取不到（接口会 500）：%s'
+          % '、'.join(_missing_metric), file=sys.stderr)
 
 # 展示用分数：五维 + 总分。全部 0–10、越高越好。
 DIMS = ['real', 'human', 'imm', 'rhy', 'syn']
@@ -209,8 +234,11 @@ def analyze(text, name=''):
             'title': title or '（未命名）',
             'chars': m['chars'],
             'score': sc,
-            'metrics': {k: m.get(k, 0) for k in SHOW},
-            'items': {k: q.item_score(k, m.get(k)) for k in SHOW},
+            # 直取，不兜底：缺键就该炸（启动自检二会先一步点名）。
+            # 历史上这里是 `m.get(k, 0)`，会把缺键伪装成原始值 0，而 40 项里
+            # 有 22 项取 0 即满分 —— 见启动自检二上方那段记录。
+            'metrics': {k: m[k] for k in SHOW},
+            'items': {k: q.item_score(k, m[k]) for k in SHOW},
             'violations': [{'name': k, 'detail': v} for k, v in comp],
         })
 
