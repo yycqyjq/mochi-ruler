@@ -12,7 +12,7 @@
     --ai      AI 语料（目录或文件），可给多个
     --per     每本最多抽多少章（全书等距），默认 100
     --top     只打印 Δ 最大的前 N 行，默认全部
-    --fp      真人语料只保留 tools/bench_build.py 里登记过内容指纹的 24 本。
+    --fp      真人语料只保留 tools/bench_build.py 里登记过内容指纹的 25 本。
               标杆目录里另有几本不可用的，不筛会污染两侧的分离度。
 
 项目铁律（见 qc_core 注释）：
@@ -74,7 +74,7 @@ def main():
     ap.add_argument("--per", type=int, default=100, help="每本最多抽多少章")
     ap.add_argument("--top", type=int, default=0, help="只打印 Δ 最大的前 N 行")
     ap.add_argument("--fp", action="store_true",
-                    help="真人语料只保留内容指纹登记过的 24 本")
+                    help="真人语料只保留内容指纹登记过的 25 本")
     a = ap.parse_args()
 
     hf, af = audit.load([a.human]), audit.load(a.ai)

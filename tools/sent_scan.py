@@ -25,7 +25,7 @@ emo_type / net_short）都被稀释。这不是排版问题——换任何字体
     --ai      AI 语料（目录或文件），可多个；`--ai A B` 与 `--ai A --ai B` 等价
     --per     每本最多抽多少章（全书等距），默认 100——须与 bench_build.PERBOOK 一致
     --top     打印前 N 行，默认全部
-    --fp      真人语料只保留 bench_build 里登记过内容指纹的 24 本
+    --fp      真人语料只保留 bench_build 里登记过内容指纹的 25 本
 
 判读：Δ ≥ +0.03 说明修正切分口径能明显提升该指标，值得单独重标定；
 Δ ≈ 0 说明该指标对引号碎片不敏感，不必动。
@@ -113,7 +113,7 @@ def main():
     ap.add_argument("--per", type=int, default=100, help="每本最多抽多少章")
     ap.add_argument("--top", type=int, default=0, help="只打印前 N 行")
     ap.add_argument("--fp", action="store_true",
-                    help="真人语料只保留内容指纹登记过的 24 本")
+                    help="真人语料只保留内容指纹登记过的 25 本")
     a = ap.parse_args()
 
     hf = audit.load([a.human])

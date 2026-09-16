@@ -20,7 +20,7 @@
               偏小（实测 per=60 时 dial_sent 是 16.27，per=100 才是 16.95，
               而 qc_core 阈值表里记的就是 16.9458）。
     --ai-cap  每个 AI 文件最多抽多少章，默认 0（不封顶）
-    --fp      真人语料只保留 tools/bench_build.py 里登记过内容指纹的 24 本。
+    --fp      真人语料只保留 tools/bench_build.py 里登记过内容指纹的 25 本。
               标杆文章目录里有 5 本不可用的（拆不出章 / 疑似合章），不筛掉
               会把「真人中位」算歪——**标定阈值时必须开**。
 
@@ -82,7 +82,7 @@ def main():
     ap.add_argument("--per", type=int, default=100, help="每本最多抽多少章")
     ap.add_argument("--ai-cap", type=int, default=0, help="每个 AI 文件最多抽多少章")
     ap.add_argument("--fp", action="store_true",
-                    help="真人语料只保留内容指纹登记过的 24 本")
+                    help="真人语料只保留内容指纹登记过的 25 本")
     a = ap.parse_args()
 
     hf = audit.load([a.human])

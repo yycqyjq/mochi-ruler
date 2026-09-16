@@ -72,7 +72,7 @@ qc_core.py — 网文「真人感 / 人味 / 代入感 / 节奏 / 句法」体�
     先算各本中位，再取跨本中位。键名为匿名代号，具体书目不入库。
 
     2026-09-14 重建（旧的是 7 本、只取前 40 章，且其中一本是在错误拆章上
-    算出来的）：现为 **24 本 × 全书等距 100 章**，剔除了五本不可用的。
+    算出来的）：现为 **25 本 × 全书等距 100 章**，剔除了五本不可用的。
     重建脚本：`tools/bench_build.py`（代号按**内容指纹**认领，不按文件名或
     排序位置——目录里多一本书就会让位置式代号全体错位，静默写坏整张表）。
     更关键的是口径：**只存原始指标中位，不再存五维分**。
@@ -560,13 +560,14 @@ BENCHMARKS = {
     "B22": {'_n': 100, 'vague': 0.2329, 'nego': 0.0, 'dash': 0.0, 'rev': 0.2697, 'simile': 0.4884, 'sent_den': 19.4973, 'para_med': 40.0, 'short_run': 2.0, 'tail': 0.0319, 'bold': 0.0, 'dede': 0.0, 'isde': 0.0431, 'onomat': 0.0, 'space': 0.3001, 'short': 0.1144, 'tell': 0.0, 'cv': 0.9028, 'dem_lit': 1.3044, 'sent_p90': 109.5, 'sent_p10': 11.5, 'comma_in': 66.1329, 'lit': 9.9003, 'para_cv': 1.1999, 'punc_den': 92.2129, 'emo': 6.8046, 'net_oral': 1.4463, 'dial_sent': 24.9306, 'exclaim': 1.2406, 'redupl': 7.1664, 'question': 15.4846, 'emo_type': 11.1806, 'breath': 0.1757, 'surprise': 0.3134, 'touch_temp': 2.52, 'act': 5.0591, 'pron3': 4.6745, 'pron_start': 0.012, 'sent_med': 35.0, 'g_turn': 2.3361, 'conn_lit': 1.1472},
     "B23": {'_n': 100, 'vague': 0.3455, 'nego': 0.0, 'dash': 0.0, 'rev': 0.2943, 'simile': 1.4318, 'sent_den': 31.0699, 'para_med': 25.5, 'short_run': 3.0, 'tail': 0.0957, 'bold': 0.0, 'dede': 0.0, 'isde': 0.4287, 'onomat': 0.0, 'space': 0.0, 'short': 0.2596, 'tell': 0.0, 'cv': 0.854, 'dem_lit': 1.397, 'sent_p90': 65.5, 'sent_p10': 6.0, 'comma_in': 69.9069, 'lit': 11.8851, 'para_cv': 0.7568, 'punc_den': 106.888, 'emo': 4.2214, 'net_oral': 1.3366, 'dial_sent': 23.5689, 'exclaim': 6.8722, 'redupl': 6.5425, 'question': 16.0868, 'emo_type': 5.7916, 'breath': 0.0, 'surprise': 0.8687, 'touch_temp': 0.2921, 'act': 2.7916, 'pron3': 9.3577, 'pron_start': 0.0448, 'sent_med': 24.0, 'g_turn': 2.3674, 'conn_lit': 1.8321},
     "B24": {'_n': 100, 'vague': 0.9121, 'nego': 0.0, 'dash': 0.3118, 'rev': 0.2143, 'simile': 0.765, 'sent_den': 19.2641, 'para_med': 54.0, 'short_run': 1.0, 'tail': 0.0237, 'bold': 0.0, 'dede': 0.0, 'isde': 0.591, 'onomat': 0.0, 'space': 0.0, 'short': 0.0691, 'tell': 0.0, 'cv': 0.827, 'dem_lit': 0.8132, 'sent_p90': 110.5, 'sent_p10': 8.0, 'comma_in': 45.5396, 'lit': 18.8476, 'para_cv': 0.6845, 'punc_den': 81.2129, 'emo': 3.1883, 'net_oral': 1.3744, 'dial_sent': 17.9567, 'exclaim': 1.1428, 'redupl': 5.6852, 'question': 15.35, 'emo_type': 6.5591, 'breath': 0.0, 'surprise': 0.2733, 'touch_temp': 0.4859, 'act': 4.1612, 'pron3': 9.3661, 'pron_start': 0.0336, 'sent_med': 38.0, 'g_turn': 2.0035, 'conn_lit': 3.5328},
+    "B25": {'_n': 100, 'vague': 0.9317, 'nego': 0.0, 'dash': 0.0, 'rev': 0.1089, 'simile': 0.5223, 'sent_den': 17.7496, 'para_med': 49.0, 'short_run': 1.0, 'tail': 0.0, 'bold': 0.0, 'dede': 0.0, 'isde': 0.424, 'onomat': 0.0, 'space': 0.0, 'short': 0.1111, 'tell': 0.0, 'cv': 0.751, 'dem_lit': 0.9242, 'sent_p90': 109.5, 'sent_p10': 12.0, 'comma_in': 59.1769, 'lit': 7.7888, 'para_cv': 0.6799, 'punc_den': 87.7972, 'emo': 6.5615, 'net_oral': 3.7214, 'dial_sent': 23.4897, 'exclaim': 4.3396, 'redupl': 4.6476, 'question': 23.9048, 'emo_type': 10.9035, 'breath': 0.0, 'surprise': 0.0, 'touch_temp': 0.4537, 'act': 3.9484, 'pron3': 11.597, 'pron_start': 0.0, 'sent_med': 43.5, 'g_turn': 3.5602, 'conn_lit': 1.1838},
 }
 
 # 下面这张表是「原始指标中位」的唯一存放处：**不存任何五维分**，五维分一律由
 # server.py 在运行时用当前公式算（见 server 的 bench 计算）。公式一改，基准口径
 # 自动跟着改，不会留下「用旧公式算死的数」。
 #
-# 键名是匿名代号 B01–B24，与具体书目的对应关系不入库（见 README「基准从哪来」）。
+# 键名是匿名代号 B01–B25，与具体书目的对应关系不入库（见 README「基准从哪来」）。
 # 重建用 `tools/bench_build.py`——代号按**内容指纹**认领，不按文件名或排序位置。
 #
 # 旧版的 `BENCH_KEYS` / `BENCH_NEG` / `BENCH_POS` 三个常量已于 2026-09-14 随基准

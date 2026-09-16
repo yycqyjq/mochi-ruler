@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """墨尺 · 基准重建（开发工具，不参与服务运行）
 
-重建 `qc_core.BENCHMARKS`：24 本 × 全书等距 ≤100 章，只存原始指标中位。
+重建 `qc_core.BENCHMARKS`：25 本 × 全书等距 ≤100 章，只存原始指标中位。
 
 用法：
     python3 tools/bench_build.py --corpus <真人标杆语料目录>
@@ -18,7 +18,7 @@
 
 为什么用「内容指纹」而不是文件名 / 排序位置来定代号
 --------------------------------------------------
-`BENCHMARKS` 的键是匿名代号 B01–B24，仓库里不出现具体书目（见 README「基准从哪来」）。
+`BENCHMARKS` 的键是匿名代号 B01–B25，仓库里不出现具体书目（见 README「基准从哪来」）。
 代号 ↔ 源文件的对应关系一旦搞错，**整张表会静默写坏，而分数看起来完全正常**。
 
 - **按文件名**：改名即失配，且等于把书目写进了仓库。
@@ -36,7 +36,7 @@
 改语料（换书 / 增删）时：先跑 `--verify` 看现状，再按需更新 `FINGERPRINTS`。
 指纹用 `--show-fp` 打印。
 
-其他工具（标定、排版扫描）需要「只保留基准登记的这 24 本」时，直接调
+其他工具（标定、排版扫描）需要「只保留基准登记的这 25 本」时，直接调
 `keep_known()`——同一份指纹表，别各写一份按书名筛的清单。
 """
 import argparse
@@ -86,6 +86,7 @@ FINGERPRINTS = {
     "B22": "347f72503f56600d",
     "B23": "03c1cfd7c133d34b",
     "B24": "e5c5394c0ee4129e",
+    "B25": "f787cece633beb67",
 }
 
 FP2CODE = {v: k for k, v in FINGERPRINTS.items()}
@@ -178,7 +179,7 @@ def verify(books):
             if va != vb:
                 drift.setdefault(code, []).append((k, va, vb))
     if not drift:
-        print("\n[零漂移] 24 本 × %d 键与当前 BENCHMARKS 完全一致。" % len(KEYS))
+        print("\n[零漂移] %d 本 × %d 键与当前 BENCHMARKS 完全一致。" % (len(books), len(KEYS)))
         return 0
     n = sum(len(v) for v in drift.values())
     print(f"\n[漂移] {len(drift)} 本 / {n} 个键与当前 BENCHMARKS 不一致：")
