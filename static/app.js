@@ -78,6 +78,7 @@ function showSource(meta) {
   $('#source-info').textContent =
     `已识别：${meta.files} 个文件\n` +
     `支持格式：${meta.formats}\n` +
+    (meta.encNote ? `解码：${meta.encNote}\n` : '') +
     `总字数：${meta.chars.toLocaleString()}\n` +
     `识别章节：${meta.chapters} 章` +
     (meta.skipped ? `\n跳过格式：${meta.skipped} 个` : '');
@@ -501,6 +502,24 @@ function countChapters(text) {
     (text.match(CHAPTER_HEAD_NUM) || []).length;
 }
 
+// 文件解码：网文 txt 大量是 GBK/GB18030（也有带 BOM 的 UTF-16），按 UTF-8 硬解
+// 会整篇变成乱码——乱码拆不出章，却仍会产出一套看似正常的分数，用户毫无线索。
+// 所以先严格按 UTF-8 解（fatal，非法序列即抛错），失败再退 gb18030（覆盖
+// GBK/GB2312/GB18030 全族）；带 BOM 的 UTF-16 按 BOM 解。TextDecoder 是浏览器
+// 内置（Encoding Standard），仍保持零依赖。
+function decodeFile(buf) {
+  const u8 = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  if (u8.length >= 2 && u8[0] === 0xFF && u8[1] === 0xFE)
+    return { text: new TextDecoder('utf-16le').decode(u8), enc: 'UTF-16LE' };
+  if (u8.length >= 2 && u8[0] === 0xFE && u8[1] === 0xFF)
+    return { text: new TextDecoder('utf-16be').decode(u8), enc: 'UTF-16BE' };
+  try {
+    return { text: new TextDecoder('utf-8', { fatal: true }).decode(u8), enc: 'UTF-8' };
+  } catch (e) {
+    return { text: new TextDecoder('gb18030').decode(u8), enc: 'GB18030' };
+  }
+}
+
 function loadFiles(fs, sourceName = '', sourceKind = 'folder') {
   let list = [...fs].filter(f => OK_EXT.test(f.name));
   const skipped = [...fs].length - list.length;
@@ -511,13 +530,20 @@ function loadFiles(fs, sourceName = '', sourceKind = 'folder') {
   }
   list.sort((a, b) => (a.webkitRelativePath || a.name)
     .localeCompare(b.webkitRelativePath || b.name, 'zh'));
-  let done = 0, buf = [];
+  let done = 0, buf = [], encs = [];
   list.forEach((f, i) => {
     const rd = new FileReader();
     rd.onload = () => {
-      buf[i] = rd.result;
+      const d = decodeFile(rd.result);
+      buf[i] = d.text;
+      encs[i] = d.enc;
       if (++done === list.length) {
         const joined = buf.join('\n\n');
+        // 非 UTF-8 文件必须点名，否则「转码成功」对用户不可见
+        const encSet = [...new Set(encs.filter(e => e !== 'UTF-8'))];
+        const encNote = encSet.length
+          ? `${encs.filter(e => e !== 'UTF-8').length} 个文件按 ${encSet.join('、')} 解码`
+          : '';
         if (sourceName) {
           loadedText = joined;
           loadedFolder = sourceName;
@@ -527,6 +553,7 @@ function loadFiles(fs, sourceName = '', sourceKind = 'folder') {
             kind: sourceKind,
             files: list.length,
             skipped,
+            encNote,
             formats: [...new Set(list.map(x => (x.name.match(/\.[^.]+$/) || [''])[0].toLowerCase()))].join('、') || '无',
             chars: joined.replace(/\s/g, '').length,
             chapters: chapters || countChapters(joined) || '未分章'
@@ -541,12 +568,12 @@ function loadFiles(fs, sourceName = '', sourceKind = 'folder') {
         }
         const chapterHint = countChapters(joined);
         $('#hint').textContent = sourceName
-          ? `已载入 ${list.length} 个文件；识别 ${chapterHint || '未分章'}；输入框内容会一起检测`
-          : `已载入 ${list.length} 个文件；识别 ${chapterHint || '未分章'}` +
+          ? `已载入 ${list.length} 个文件${encNote ? '，' + encNote : ''}；识别 ${chapterHint || '未分章'}；输入框内容会一起检测`
+          : `已载入 ${list.length} 个文件${encNote ? '，' + encNote : ''}；识别 ${chapterHint || '未分章'}` +
           (skipped ? `（跳过 ${skipped} 个非文本文件）` : '');
       }
     };
-    rd.readAsText(f, 'utf-8');
+    rd.readAsArrayBuffer(f);
   });
 }
 
