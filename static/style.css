@@ -276,6 +276,16 @@ textarea.on {
 
 .meta { font-size: 12px; color: var(--dim); margin-bottom: 14px; letter-spacing: .02em; }
 
+/* 短文本统计不稳提示（app.js 按 summary.chars 控制显隐） */
+.shortwarn {
+  font-size: 12px; line-height: 1.6;
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent);
+  border-radius: 10px;
+  padding: 9px 13px; margin-bottom: 12px;
+}
+
 /* ── 尺（评分条）───────────────────────────────────────────
    底轨带刻度：每 10% 一格 = 1 分；朱砂竖线 = 标杆位置。 */
 

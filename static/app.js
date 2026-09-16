@@ -391,6 +391,10 @@ function render(d) {
   $('#meta').textContent =
     `${s.chapters} 章　·　${s.chars.toLocaleString()} 字`;
 
+  // 短文本提示：每千字密度在短文本上被外推放大，分数失真（README 已声明
+  // 不适用短篇，工具自己也要说出口）。
+  $('#shortwarn').hidden = s.chars >= 1000;
+
   // 总分单独成卡：先给结论，再往下看五维与逐项。
   const tv = s.total, tb = d.bench.total;
   const tcls = scCls(tv), tj = itemTag(tv, tb);
@@ -460,11 +464,16 @@ async function run() {
   runBtn.dataset.label = runBtn.textContent;
   runBtn.textContent = '检测中…';
   $('#hint').textContent = '正在拆章节并计算指标…';
+  // 服务端同步计算，超长文本可能要等一会；2 分钟无响应按超时处理，
+  // 否则按钮永远停在「检测中…」。
+  const ctrl = new AbortController();
+  const killTimer = setTimeout(() => ctrl.abort(), 120000);
   try {
     const r = await fetch('/api/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text })
+      body: JSON.stringify({ text }),
+      signal: ctrl.signal
     });
     if (!r.ok) throw new Error('检测失败：' + r.status);
     const d = await r.json();
@@ -482,10 +491,13 @@ async function run() {
     popup('检测完成',
       `已完成 ${s.chapters} 章、${s.chars.toLocaleString()} 字的检测。${sourceNote}${extra}`, 'success');
   } catch (e) {
-    const reason = e && e.message ? e.message : '未知错误';
+    const reason = e && e.name === 'AbortError'
+      ? '检测超时（120 秒）。正文可能过长，请拆分后分批检测。'
+      : (e && e.message ? e.message : '未知错误');
     $('#hint').textContent = `检测失败：${reason}`;
     popup('检测失败', `检测没有完成。\n\n原因：${reason}\n\n请检查输入内容或重新载入文件后再试。`, 'error');
   } finally {
+    clearTimeout(killTimer);
     runBtn.disabled = false;
     runBtn.classList.remove('loading');
     runBtn.textContent = runBtn.dataset.label || '开始检测';
@@ -558,7 +570,8 @@ function loadFiles(fs, sourceName = '', sourceKind = 'folder') {
             chars: joined.replace(/\s/g, '').length,
             chapters: chapters || countChapters(joined) || '未分章'
           });
-          $('#text').value = '';
+          // 不清空输入框：run() 会把文件来源与手动输入合并检测，
+          // 与「移除来源时保留手动内容」保持同一设计。
         } else {
           loadedText = null;
           loadedFolder = '';
