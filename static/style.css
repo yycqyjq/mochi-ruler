@@ -573,3 +573,108 @@ footer i { font-style: normal; opacity: .45; }
   textarea { height: 260px; }
   .trust { display: none; }
 }
+
+/* ── 「最该先改」摘要条 ─────────────────────────────────────
+   总分卡之后直接给行动结论：差距最大的维度 / 指标芯片 + 硬规则计数。
+   挑选口径与判定一致：差距 > 2 偏低，> 0.5 接近。 */
+
+.fixbar {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 7px;
+  border: 1px solid var(--line); border-left: 3px solid var(--verm);
+  border-radius: 10px; background: var(--card);
+  padding: 10px 14px; margin-bottom: 12px;
+}
+.fx-label {
+  font-family: var(--serif); font-weight: 700; font-size: 13px;
+  letter-spacing: .08em; margin-right: 2px;
+}
+.fx-ok { color: var(--good); font-weight: 600; }
+.fx-chip {
+  -webkit-appearance: none; appearance: none; font: inherit;
+  font-size: 12px; line-height: 1.5;
+  padding: 2px 10px; border-radius: 999px; border: 1px solid currentColor;
+  background: transparent; cursor: pointer; white-space: nowrap;
+  transition: transform .06s;
+}
+.fx-chip:hover { transform: translateY(-1px); }
+.fx-chip.no { color: var(--bad); }
+.fx-chip.mid { color: var(--warn); }
+.fx-chip.warn { color: var(--warn); border-style: dashed; }
+
+/* 摘要条 / 章明细里的芯片跳转后，目标行短暂高亮 */
+@keyframes fxflash { from { background: var(--accent-soft); } to { background: transparent; } }
+.mrow.flash, .mgroup.flash { animation: fxflash 1.6s ease-out 1; }
+
+/* ── 分段切换（排序 / 过滤）───────────────────────────────── */
+
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--line-strong); border-radius: 999px; overflow: hidden;
+}
+.seg button {
+  -webkit-appearance: none; appearance: none; font: inherit;
+  font-size: 11px; line-height: 1.5; padding: 2px 11px;
+  border: 0; background: transparent; color: var(--dim);
+  cursor: pointer; white-space: nowrap;
+}
+.seg button + button { border-left: 1px solid var(--line-strong); }
+.seg button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.segbtn {
+  -webkit-appearance: none; appearance: none; font: inherit;
+  font-size: 11px; line-height: 1.5; padding: 2px 11px;
+  border: 1px solid var(--line-strong); border-radius: 999px;
+  background: transparent; color: var(--dim); cursor: pointer;
+}
+.segbtn.on {
+  background: var(--accent-soft); border-color: var(--accent);
+  color: var(--accent); font-weight: 600;
+}
+.mhead { flex-wrap: wrap; }
+.mhead .seg { margin-left: auto; }
+.mhead .copybtn { margin-left: 8px; }
+.chtool { display: flex; align-items: center; gap: 8px; margin: -2px 0 8px; }
+
+/* ── 逐项表的「尺」列 ───────────────────────────────────────
+   与五维卡同一视觉语言：填充=你的分，朱砂竖线=标杆。 */
+
+.mrow { grid-template-columns: minmax(0, 1fr) 120px 70px 70px 56px; }
+.mbarcell { min-width: 0; }
+.mbar {
+  position: relative; height: 6px; border-radius: 3px; align-self: center;
+  background:
+    repeating-linear-gradient(to right,
+      var(--line-strong) 0 1px, transparent 1px 10%),
+    var(--bg-soft);
+}
+.mbar i { display: block; height: 100%; border-radius: 3px; }
+.mbar .mark {
+  position: absolute; left: 0; top: -3px;
+  width: 2px; height: 12px; border-radius: 1px;
+  background: var(--verm); transform: translateX(-1px);
+}
+/* 按差距排序时，指标名后的维度小标签 */
+.dtag {
+  flex: none; font-size: 10px; line-height: 1.6;
+  color: var(--dim); border: 1px solid var(--line);
+  border-radius: 4px; padding: 0 5px;
+}
+
+/* ── 逐章钻取 ─────────────────────────────────────────────── */
+
+.crow:not(.head):not(.showall) { cursor: pointer; }
+.twist { display: inline-block; width: 12px; color: var(--dim); }
+.chdetail {
+  padding: 8px 14px 10px 30px;
+  background: var(--bg-soft);
+  border-bottom: 1px solid var(--line);
+}
+.chd-items { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+.chd-viol { font-size: 11px; color: var(--warn); line-height: 1.7; }
+.crow.showall { cursor: pointer; color: var(--accent); font-size: 12px; }
+.crow.showall:hover { background: var(--accent-soft); }
+.chempty { padding: 18px 14px; font-size: 12px; color: var(--dim); }
+
+@media (max-width: 640px) {
+  .mrow { grid-template-columns: minmax(0, 1fr) 62px 60px 54px; }
+  .mbar, .mbarcell { display: none; }
+}

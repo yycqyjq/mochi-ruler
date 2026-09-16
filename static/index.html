@@ -91,15 +91,29 @@
 
           <div id="totalcard" class="totalcard"></div>
 
+          <div id="fixbar" class="fixbar" hidden></div>
+
           <div class="scores" id="scores"></div>
 
           <h3 class="mhead">逐项对比 <span class="dim" id="mcount"></span>
+            <div class="seg" id="sortseg" role="group" aria-label="逐项排序方式">
+              <button type="button" data-sort="dim">按维度</button>
+              <button type="button" data-sort="gap">按差距</button>
+            </div>
             <button type="button" class="copybtn" id="copybtn"
               title="把维度总分与逐项对比复制成一张表，方便贴出去排查">复制表格</button>
           </h3>
           <div class="metrics" id="metrics"></div>
 
           <h3 id="chtitle">逐章</h3>
+          <div class="chtool">
+            <div class="seg" id="chsortseg" role="group" aria-label="逐章排序">
+              <button type="button" data-chsort="orig">原文顺序</button>
+              <button type="button" data-chsort="low">总分最低</button>
+            </div>
+            <button type="button" class="segbtn" id="onlyviol"
+              title="只列出命中合规硬规则的章">只看有违规</button>
+          </div>
           <div class="chapters" id="chapters"></div>
         </div>
       </section>

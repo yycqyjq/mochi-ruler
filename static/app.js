@@ -55,6 +55,14 @@ let loadedFolder = '';
 let loadedMeta = null;
 // 选中的维度（用于筛选下方逐项对比）；空集 = 显示全部。
 let dimSel = new Set();
+// 逐项排序：dim = 按维度分组（默认），gap = 按与标杆的差距从大到小平铺。
+let sortMode = 'dim';
+// 逐章列表视图：排序 / 违规过滤 / 展开的章 / 大书截断。
+let chSort = 'orig';
+let chOnlyViol = false;
+let showAllChapters = false;
+let expandedCh = new Set();
+const CHAPTER_LIMIT = 60;   // 超过后默认截断，只渲染前 60 章 +「显示全部」
 
 let toastTimer = null;
 function popup(title, body, type = '') {
@@ -201,23 +209,40 @@ function buildTableRows(d) {
       bench: isTotal ? d.bench.total : d.bench[k],
     };
   });
-  const groups = (active.length ? active : d.dims).map(k => ({
+  const groups0 = (active.length ? active : d.dims).map(k => ({
     dim: k,
     name: d.dimlabel[k] || k,
     items: (dimitems[k] || []).filter(item => d.items.includes(item)),
   }));
-  if (orphans.length) groups.push({ dim: '', name: '通用', items: orphans });
+  if (orphans.length) groups0.push({ dim: '', name: '通用', items: orphans });
+  let groups = groups0;
+  let itemDim = null;
+  if (sortMode === 'gap') {
+    // 按差距平铺：「标杆 − 你的分」从大到小。组名换成排序说明，每行补一个
+    // 维度小标签——渲染与复制共用本函数，屏幕所见与复制所得一致。
+    const dimOf = {};
+    groups0.forEach(g => g.items.forEach(item => { dimOf[item] = g.dim; }));
+    groups = [{
+      dim: '', name: '按差距排序',
+      items: groups0.flatMap(g => g.items).sort((a, b) =>
+        ((d.bench.items[b] ?? 0) - (d.summary.items[b] ?? 0)) -
+        ((d.bench.items[a] ?? 0) - (d.summary.items[a] ?? 0))),
+    }];
+    itemDim = dimOf;
+  }
   const itemCount = groups.reduce((n, g) => n + g.items.length, 0);
-  return { dimRows, groups, itemCount, orphanCount: orphans.length };
+  return { dimRows, groups, itemCount, orphanCount: orphans.length, itemDim };
 }
 
 function renderMetrics(d) {
-  const { dimRows, groups, itemCount, orphanCount } = buildTableRows(d);
+  const { dimRows, groups, itemCount, orphanCount, itemDim } = buildTableRows(d);
   const active = d.dims.filter(k => dimSel.has(k));
+  document.querySelectorAll('#sortseg button').forEach(b =>
+    b.classList.toggle('on', b.dataset.sort === sortMode));
   $('#mcount').textContent = active.length
     ? `（${itemCount} / ${d.items.length} 项 · 只显示选中维度${orphanCount ? '，含通用项' : ''}）`
     : `（${itemCount} 项 · 满分 10）`;
-  let rows = '<div class="mrow head"><div class="n">项目</div>' +
+  let rows = '<div class="mrow head"><div class="n">项目</div><div class="mbarcell"></div>' +
     '<div class="you">你的分</div><div class="bench">标杆</div><div class="tag">判定</div></div>';
   // 维度总分行：加深底色、加粗，先给整体结论再往下看逐项。
   for (const r of dimRows) {
@@ -225,6 +250,7 @@ function renderMetrics(d) {
     const cls = (r.you === null || r.you === undefined) ? '' : scCls(r.you);
     rows += `<div class="mrow dimrow">
       <div class="n"><span class="nlabel">${r.name}</span></div>
+      <div class="mbarcell"></div>
       <div class="you ${cls}">${num(r.you, 2)}</div>
       <div class="bench">${num(r.bench, 2)}</div>
       <div class="tag">${j.tag}</div>
@@ -233,7 +259,7 @@ function renderMetrics(d) {
   rows += '<div class="msep">逐项对比 · 每项满分 10，越高越好</div>';
   TIPDATA = {};
   for (const g of groups) {
-    rows += `<div class="mgroup"><span>${esc(g.name)}</span>` +
+    rows += `<div class="mgroup" data-dim="${g.dim}"><span>${esc(g.name)}</span>` +
       `<span>${g.items.length} 项</span></div>`;
     for (const k of g.items) {
       const you = d.summary.items[k], bench = d.bench.items[k];
@@ -259,8 +285,18 @@ function renderMetrics(d) {
         ? `<button type="button" class="qi" data-k="${k}"` +
           ` aria-label="${esc(name)} 的口径说明">?</button>`
         : '';
+      // 尺列：填充=你的分，朱砂竖线=标杆 —— 与五维卡同一视觉语言，
+      // 40 行扫一眼就能看出哪项短，不必逐行心算两个数。
+      const fill = cls
+        ? `<i style="width:${Math.max(0, Math.min(10, you)) * 10}%;background:var(--${cls})"></i>`
+        : '';
+      const mark = (bench === null || bench === undefined) ? '' :
+        `<span class="mark" style="left:${Math.max(0, Math.min(10, bench)) * 10}%"></span>`;
+      const dtag = (itemDim && itemDim[k])
+        ? `<span class="dtag">${esc(d.dimlabel[itemDim[k]] || itemDim[k])}</span>` : '';
       rows += `<div class="mrow ${j.cls}">
-        <div class="n"><span class="nlabel">${esc(name)}</span>${qi}</div>
+        <div class="n"><span class="nlabel">${esc(name)}</span>${dtag}${qi}</div>
+        <div class="mbar">${fill}${mark}</div>
         <div class="you ${cls}">${num(you)}</div>
         <div class="bench">${num(bench)}</div>
         <div class="tag">${j.tag}</div>
@@ -383,6 +419,139 @@ function repositionTip() {
 }
 
 
+// 「最该先改」摘要条：总分卡直接给出行动结论，兑现 README 的
+// 「指出最该先改的项」。挑选口径与判定一致：差距 > 2 偏低，> 0.5 接近。
+function renderFixbar(d) {
+  const s = d.summary, b = d.bench;
+  const dimGaps = d.dims
+    .map(k => ({ k, name: d.dimlabel[k] || k, you: s[k], bench: b[k] }))
+    .filter(x => x.you != null && x.bench != null && x.bench - x.you > 2)
+    .sort((a, b) => (b.bench - b.you) - (a.bench - a.you));
+  const gaps = d.items
+    .map(k => ({ k, name: (d.label && d.label[k]) || k,
+                 you: s.items[k], bench: b.items[k] }))
+    .filter(x => x.you != null && x.bench != null)
+    .map(x => ({ ...x, gap: x.bench - x.you }));
+  const lows = gaps.filter(x => x.gap > 2)
+    .sort((a, b) => b.gap - a.gap).slice(0, 3);
+  const mids = lows.length ? [] :
+    gaps.filter(x => x.gap > 0.5).sort((a, b) => b.gap - a.gap).slice(0, 3);
+  const violNames = [];
+  let violChs = 0;
+  for (const c of d.chapters) {
+    if (c.violations && c.violations.length) {
+      violChs++;
+      for (const v of c.violations)
+        if (!violNames.includes(v.name)) violNames.push(v.name);
+    }
+  }
+  const el = $('#fixbar');
+  el.hidden = false;
+  if (!dimGaps.length && !lows.length && !mids.length && !violChs) {
+    el.innerHTML = '<span class="fx-ok">✓ 各项均达标或接近标杆，未命中硬规则。</span>';
+    return;
+  }
+  const chips = [];
+  for (const x of dimGaps.slice(0, 2)) {
+    chips.push(`<button type="button" class="fx-chip no" data-dim="${x.k}">` +
+      `${esc(x.name)} ${x.you.toFixed(2)}（标杆 ${x.bench.toFixed(2)}）</button>`);
+  }
+  for (const x of (lows.length ? lows : mids)) {
+    chips.push(`<button type="button" class="fx-chip ${lows.length ? 'no' : 'mid'}" data-k="${x.k}">` +
+      `${esc(x.name)} ${x.you.toFixed(1)}（标杆 ${x.bench.toFixed(1)}）</button>`);
+  }
+  if (violChs) {
+    chips.push(`<button type="button" class="fx-chip warn" data-viol="1">` +
+      `⚠ 硬规则 ${violNames.length} 项 · 命中 ${violChs} 章</button>`);
+  }
+  el.innerHTML = `<span class="fx-label">⚡ 最该先改</span>${chips.join('')}`;
+}
+
+// 点摘要条/章明细里的指标芯片 → 选中所在维度并滚到那一行，短暂高亮。
+function jumpToItem(d, k) {
+  const dimitems = dimItemsOf(d);
+  const dim = d.dims.find(dd => (dimitems[dd] || []).includes(k));
+  if (dim && !dimSel.has(dim)) {
+    dimSel.add(dim);
+    renderScores(d);
+    renderMetrics(d);
+  }
+  const qi = document.querySelector(`.qi[data-k="${k}"]`);
+  const row = qi && qi.closest('.mrow');
+  if (row) {
+    row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    row.classList.remove('flash');
+    void row.offsetWidth;
+    row.classList.add('flash');
+  } else {
+    $('#metrics').scrollIntoView({ block: 'start', behavior: 'smooth' });
+  }
+}
+
+// 章展开明细：该章与标杆差距最大的前三项 + 违规完整详情。数据本来就在
+// analyze 的逐章返回里（items / violations），此前只是没渲染。
+function chapterDetailHTML(d, c) {
+  const gaps = d.items
+    .map(k => ({ k, name: (d.label && d.label[k]) || k,
+                 you: c.items[k], bench: d.bench.items[k] }))
+    .filter(x => x.you != null && x.bench != null)
+    .map(x => ({ ...x, gap: x.bench - x.you }))
+    .sort((a, b) => b.gap - a.gap);
+  const worst = gaps.filter(x => x.gap > 2).slice(0, 3);
+  const itemsPart = worst.length
+    ? worst.map(x =>
+        `<button type="button" class="fx-chip no" data-k="${x.k}">` +
+        `${esc(x.name)} ${x.you.toFixed(1)}（标杆 ${x.bench.toFixed(1)}）</button>`).join('')
+    : '<span class="dim">各项均接近标杆。</span>';
+  const violPart = (c.violations || [])
+    .map(v => `<div class="chd-viol">⚠ ${esc(v.name)}：${esc(v.detail)}</div>`).join('');
+  return `<div class="chdetail"><div class="chd-items">${itemsPart}</div>${violPart}</div>`;
+}
+
+// 逐章列表：可按原文顺序或总分排序，可只看有违规的章；超过 CHAPTER_LIMIT
+// 截断（几千章一次性渲染会卡 DOM），章行点击展开该章问题明细。
+function renderChapters(d) {
+  $('#chtitle').textContent = `逐章（${d.chapters.length}）`;
+  document.querySelectorAll('#chsortseg button').forEach(b =>
+    b.classList.toggle('on', b.dataset.chsort === chSort));
+  $('#onlyviol').classList.toggle('on', chOnlyViol);
+
+  let list = d.chapters.map((c, i) => ({ c, i }));
+  if (chOnlyViol) list = list.filter(x => x.c.violations && x.c.violations.length);
+  if (chSort === 'low') list.sort((a, b) => a.c.score.total - b.c.score.total);
+  const truncated = !showAllChapters && list.length > CHAPTER_LIMIT;
+  const shown = truncated ? list.slice(0, CHAPTER_LIMIT) : list;
+
+  let ch = '<div class="crow head"><div class="t">章</div>' +
+    '<div class="v">字数</div><div class="v">真人感</div><div class="v">人味</div>' +
+    '<div class="v">代入</div><div class="v">节奏</div><div class="v">句法</div>' +
+    '<div class="v">总分</div></div>';
+  for (const { c, i } of shown) {
+    const t = esc(c.title);
+    ch += `<div class="crow" data-i="${i}">
+      <div class="t"><span class="twist">${expandedCh.has(i) ? '▾' : '▸'}</span>${t}</div>
+      <div class="v">${c.chars}</div>
+      <div class="v ${scCls(c.score.real)}">${c.score.real.toFixed(1)}</div>
+      <div class="v ${scCls(c.score.human)}">${c.score.human.toFixed(1)}</div>
+      <div class="v ${scCls(c.score.imm)}">${c.score.imm.toFixed(1)}</div>
+      <div class="v ${scCls(c.score.rhy)}">${c.score.rhy.toFixed(1)}</div>
+      <div class="v ${scCls(c.score.syn)}">${c.score.syn.toFixed(1)}</div>
+      <div class="v ${scCls(c.score.total)}">${c.score.total.toFixed(1)}</div>
+    </div>`;
+    if (c.violations && c.violations.length) {
+      ch += `<div class="viol" title="${esc(c.violations.map(v => `${v.name}：${v.detail}`).join('\n'))}">⚠ ${c.violations.map(v => esc(v.name)).join('、')}</div>`;
+    }
+    if (expandedCh.has(i)) ch += chapterDetailHTML(d, c);
+  }
+  if (truncated) {
+    ch += `<div class="crow showall">显示全部 ${list.length} 章（当前只列前 ${CHAPTER_LIMIT}；可改按「总分最低」排序让问题章排前）</div>`;
+  }
+  if (!shown.length) {
+    ch = '<div class="chempty">没有符合条件的章。</div>';
+  }
+  $('#chapters').innerHTML = ch;
+}
+
 function render(d) {
   $('#empty').hidden = true;
   $('#result').hidden = false;
@@ -419,32 +588,10 @@ function render(d) {
       </div>
     </div>`;
 
+  renderFixbar(d);
   renderScores(d);
   renderMetrics(d);
-
-  $('#chtitle').textContent = `逐章（${d.chapters.length}）`;
-  let ch = '<div class="crow head"><div class="t">章</div>' +
-    '<div class="v">字数</div><div class="v">真人感</div><div class="v">人味</div>' +
-    '<div class="v">代入</div><div class="v">节奏</div><div class="v">句法</div>' +
-    '<div class="v">总分</div></div>';
-  for (const c of d.chapters) {
-    // 标题来自被检测的文件原文，进 innerHTML 前必须转义（内容与 title 属性两处）。
-    const t = esc(c.title);
-    ch += `<div class="crow">
-      <div class="t" title="${t}">${t}</div>
-      <div class="v">${c.chars}</div>
-      <div class="v ${scCls(c.score.real)}">${c.score.real.toFixed(1)}</div>
-      <div class="v ${scCls(c.score.human)}">${c.score.human.toFixed(1)}</div>
-      <div class="v ${scCls(c.score.imm)}">${c.score.imm.toFixed(1)}</div>
-      <div class="v ${scCls(c.score.rhy)}">${c.score.rhy.toFixed(1)}</div>
-      <div class="v ${scCls(c.score.syn)}">${c.score.syn.toFixed(1)}</div>
-      <div class="v ${scCls(c.score.total)}">${c.score.total.toFixed(1)}</div>
-    </div>`;
-    if (c.violations && c.violations.length) {
-      ch += `<div class="viol" title="${esc(c.violations.map(v => `${v.name}：${v.detail}`).join('\n'))}">⚠ ${c.violations.map(v => esc(v.name)).join('、')}</div>`;
-    }
-  }
-  $('#chapters').innerHTML = ch;
+  renderChapters(d);
 }
 
 async function run() {
@@ -479,6 +626,11 @@ async function run() {
     const d = await r.json();
     if (d.error) throw new Error(d.error);
     LAST = d;
+    // 新结果重置逐章视图（维度筛选与排序偏好保留）。
+    expandedCh.clear();
+    showAllChapters = false;
+    chOnlyViol = false;
+    chSort = 'orig';
     render(d);
     const s = d.summary;
     const sourceNote = loadedFolder
@@ -718,6 +870,79 @@ document.addEventListener('DOMContentLoaded', () => {
     if (dimSel.has(k)) dimSel.delete(k); else dimSel.add(k);
     renderScores(LAST);
     renderMetrics(LAST);
+  });
+  // 「按维度 / 按差距」排序切换：渲染与复制共用 buildTableRows，同步生效。
+  $('#sortseg').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-sort]');
+    if (!btn) return;
+    sortMode = btn.dataset.sort;
+    if (LAST) renderMetrics(LAST);
+  });
+  // 「最该先改」摘要条：维度芯片 → 选中该维并滚到分组头；指标芯片 → 跳到该行；
+  // 违规芯片 → 打开逐章的违规过滤并展开第一章。
+  $('#fixbar').addEventListener('click', e => {
+    const chip = e.target.closest('.fx-chip');
+    if (!chip || !LAST) return;
+    if (chip.dataset.dim) {
+      dimSel.add(chip.dataset.dim);
+      renderScores(LAST);
+      renderMetrics(LAST);
+      const g = document.querySelector(`.mgroup[data-dim="${chip.dataset.dim}"]`);
+      if (g) {
+        g.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        g.classList.remove('flash'); void g.offsetWidth; g.classList.add('flash');
+      }
+    } else if (chip.dataset.k) {
+      jumpToItem(LAST, chip.dataset.k);
+    } else if (chip.dataset.viol) {
+      chOnlyViol = true;
+      showAllChapters = true;
+      renderChapters(LAST);
+      const first = document.querySelector('#chapters .crow[data-i]');
+      if (first) first.click();
+      $('#chapters').scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }
+  });
+  // 逐章工具条：排序与违规过滤。
+  $('#chsortseg').addEventListener('click', e => {
+    const btn = e.target.closest('button[data-chsort]');
+    if (!btn) return;
+    chSort = btn.dataset.chsort;
+    if (LAST) renderChapters(LAST);
+  });
+  $('#onlyviol').addEventListener('click', () => {
+    chOnlyViol = !chOnlyViol;
+    if (LAST) renderChapters(LAST);
+  });
+  // 逐章列表：点行展开问题明细，点芯片跳到对应指标行，点尾行显示全部。
+  $('#chapters').addEventListener('click', e => {
+    if (!LAST) return;
+    if (e.target.closest('.showall')) {
+      showAllChapters = true;
+      renderChapters(LAST);
+      return;
+    }
+    const chip = e.target.closest('.fx-chip[data-k]');
+    if (chip) {
+      jumpToItem(LAST, chip.dataset.k);
+      return;
+    }
+    const crow = e.target.closest('.crow[data-i]');
+    if (!crow) return;
+    const i = +crow.dataset.i;
+    // 明细插在章行（或其违规行）之后；再点一次收起。
+    const next = crow.nextElementSibling;
+    const afterViol = next && next.classList.contains('viol')
+      ? next.nextElementSibling : next;
+    if (afterViol && afterViol.classList.contains('chdetail')) {
+      afterViol.remove();
+      expandedCh.delete(i);
+      crow.querySelector('.twist').textContent = '▸';
+    } else {
+      crow.insertAdjacentHTML('afterend', chapterDetailHTML(LAST, LAST.chapters[i]));
+      expandedCh.add(i);
+      crow.querySelector('.twist').textContent = '▾';
+    }
   });
   // ? 的口径说明：鼠标走悬停、键盘走聚焦、触屏走点按，按指针类型分流。
   //
