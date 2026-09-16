@@ -164,6 +164,7 @@ mochi-ruler/
 │   ├── sent_scan.py     开发工具：扫描哪些指标其实在量引号碎片而不是量笔法
 │   ├── expand_eval.py   开发工具：评估再加一个指标对该维分离度的净收益
 │   ├── regress.py       开发工具：零回归（同 harness 跑两棵树的评分核心）
+│   ├── selftest.py      开发工具：无语料自测（拆章 / 阈值 / 47 键 / API 冒烟，CI 必跑）
 │   └── narrative.py     开发工具：叙事结构诊断视图（**不进打分**，只给作者看结构）
 ├── static/
 │   ├── index.html       前端页面
@@ -218,6 +219,10 @@ python3 tools/expand_eval.py --human ~/标杆文章 --ai ~/AI语料 --fp
 # 零回归：改动前后用同一批素材跑 server.analyze，逐字段比对
 python3 tools/regress.py --corpus ~/语料 --per 20 --dump /tmp/base.json
 python3 tools/regress.py --compare /tmp/base.json /tmp/new.json --allow redupl
+
+# 无语料自测：拆章各格式 / good() 双向阈值 / 47 键完整性 / API 冒烟
+# （不需要标杆语料，提交前与 CI 必跑）
+python3 tools/selftest.py
 
 # 叙事结构诊断：换一个轴看自己的文本结构（逐句分类 → 类型序列 → 转移统计）
 python3 tools/narrative.py ~/正文.md --window 2000 --step 1000
@@ -290,7 +295,8 @@ AI 的叙述像一台摄像机：谁站在哪、看着什么、光落在哪，�
 
 1. Fork 本仓库，从 `main` 切出分支
 2. 改动尽量聚焦单一主题，提交信息写清「改了什么、为什么」
-3. 提 PR 时说明动机与验证方式
+3. 提交前跑 `python3 tools/selftest.py`（不需要语料），确认 29 项自测全过
+4. 提 PR 时说明动机与验证方式
 
 ### 改指标前必读
 
