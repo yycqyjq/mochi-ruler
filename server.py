@@ -315,6 +315,7 @@ class H(BaseHTTPRequestHandler):
             fn = os.path.basename(p)
             ct = ('text/css' if fn.endswith('.css') else
                   'application/javascript' if fn.endswith('.js') else
+                  'image/svg+xml' if fn.endswith('.svg') else
                   'text/plain')
             return self._file(os.path.join(STATIC, fn), ct + '; charset=utf-8')
         self._send(404, b'not found', 'text/plain')

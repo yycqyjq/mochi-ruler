@@ -105,6 +105,12 @@ function fmt(v) {
   return v.toFixed(2);
 }
 
+// HTML 转义：章标题等文本来自被检测的文件（可能是任意来源下载的 txt），
+// 渲染进 innerHTML 前必须转义，防止「第X章 <img src=x onerror=…>」这类
+// 藏在章头行里的内容借渲染执行。
+const esc = s => String(s).replace(/[&<>"']/g,
+  c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
 // 逐项判定：所有分数 0–10、越高越好，所以只需和标杆分比高低，不需要方向。
 function itemTag(you, bench) {
   if (you === null || you === undefined ||
@@ -173,9 +179,11 @@ function dimItemsOf(d) {
 // 这里把气泡内容存进 TIPDATA，? 上只放指标键，避免把长文本塞进 data 属性。
 let TIPDATA = {};
 
-// 合并表的数据源：维度总分行（含总分）+ 逐项行，渲染与复制共用，
+// 合并表的数据源：维度总分行（含总分）+ 按维度分组的逐项行，渲染与复制共用，
 // 保证屏幕上看到的和复制出去的永远一致。维度筛选（dimSel）在这里生效：
 // 有选中维度时，维度行只保留总分 + 选中维度，逐项行只保留这些维度覆盖的指标。
+// 组序与五维卡一致（d.dims），未归入任何维度的项兜底进「通用」组——
+// 正常口径下 SHOW 与权重表完全重合，这组是空的。
 function buildTableRows(d) {
   const s = d.summary;
   const dimitems = dimItemsOf(d);
@@ -192,21 +200,18 @@ function buildTableRows(d) {
       bench: isTotal ? d.bench.total : d.bench[k],
     };
   });
-  let keys = d.items;
-  if (active.length) {
-    const allow = new Set(active.flatMap(k => dimitems[k] || []));
-    keys = d.items.filter(k => allow.has(k) || orphans.includes(k));
-  }
-  const itemRows = keys.map(k => ({
-    kind: 'item', key: k,
-    name: (d.label && d.label[k]) || k,
-    you: s.items[k], bench: d.bench.items[k],
+  const groups = (active.length ? active : d.dims).map(k => ({
+    dim: k,
+    name: d.dimlabel[k] || k,
+    items: (dimitems[k] || []).filter(item => d.items.includes(item)),
   }));
-  return { dimRows, itemRows, itemCount: keys.length, orphanCount: orphans.length };
+  if (orphans.length) groups.push({ dim: '', name: '通用', items: orphans });
+  const itemCount = groups.reduce((n, g) => n + g.items.length, 0);
+  return { dimRows, groups, itemCount, orphanCount: orphans.length };
 }
 
 function renderMetrics(d) {
-  const { dimRows, itemRows, itemCount, orphanCount } = buildTableRows(d);
+  const { dimRows, groups, itemCount, orphanCount } = buildTableRows(d);
   const active = d.dims.filter(k => dimSel.has(k));
   $('#mcount').textContent = active.length
     ? `（${itemCount} / ${d.items.length} 项 · 只显示选中维度${orphanCount ? '，含通用项' : ''}）`
@@ -226,36 +231,40 @@ function renderMetrics(d) {
   }
   rows += '<div class="msep">逐项对比 · 每项满分 10，越高越好</div>';
   TIPDATA = {};
-  for (const r of itemRows) {
-    const k = r.key;
-    const you = r.you, bench = r.bench;
-    const raw = d.summary.metrics[k], rawB = d.bench.metrics[k];
-    const j = itemTag(you, bench);
-    const cls = (you === null || you === undefined) ? '' : scCls(you);
-    const desc = (d.desc && d.desc[k]) || '';
-    const dir = (d.rawdir && d.rawdir[k]) || '';
-    if (desc) {
-      TIPDATA[k] = {
-        name: d.label[k] || k,
-        desc,
-        raw: fmt(raw),
-        benchRaw: fmt(rawB),
-        dir,
-      };
+  for (const g of groups) {
+    rows += `<div class="mgroup"><span>${esc(g.name)}</span>` +
+      `<span>${g.items.length} 项</span></div>`;
+    for (const k of g.items) {
+      const you = d.summary.items[k], bench = d.bench.items[k];
+      const raw = d.summary.metrics[k], rawB = d.bench.metrics[k];
+      const j = itemTag(you, bench);
+      const cls = (you === null || you === undefined) ? '' : scCls(you);
+      const name = (d.label && d.label[k]) || k;
+      const desc = (d.desc && d.desc[k]) || '';
+      const dir = (d.rawdir && d.rawdir[k]) || '';
+      if (desc) {
+        TIPDATA[k] = {
+          name,
+          desc,
+          raw: fmt(raw),
+          benchRaw: fmt(rawB),
+          dir,
+        };
+      }
+      // 缺口径说明时不渲染 ?，避免出现一个点开是空的图标。
+      // 用原生 <button> 而不是带 role="button" 的 span：按键 Enter / Space 只有
+      // 原生按钮才会合成 click 事件，span 得自己写键盘处理。
+      const qi = desc
+        ? `<button type="button" class="qi" data-k="${k}"` +
+          ` aria-label="${esc(name)} 的口径说明">?</button>`
+        : '';
+      rows += `<div class="mrow ${j.cls}">
+        <div class="n"><span class="nlabel">${esc(name)}</span>${qi}</div>
+        <div class="you ${cls}">${num(you)}</div>
+        <div class="bench">${num(bench)}</div>
+        <div class="tag">${j.tag}</div>
+      </div>`;
     }
-    // 缺口径说明时不渲染 ?，避免出现一个点开是空的图标。
-    // 用原生 <button> 而不是带 role="button" 的 span：按键 Enter / Space 只有
-    // 原生按钮才会合成 click 事件，span 得自己写键盘处理。
-    const qi = desc
-      ? `<button type="button" class="qi" data-k="${k}"` +
-        ` aria-label="${d.label[k] || k} 的口径说明">?</button>`
-      : '';
-    rows += `<div class="mrow ${j.cls}">
-      <div class="n"><span class="nlabel">${r.name}</span>${qi}</div>
-      <div class="you ${cls}">${num(you)}</div>
-      <div class="bench">${num(bench)}</div>
-      <div class="tag">${j.tag}</div>
-    </div>`;
   }
   $('#metrics').innerHTML = rows;
 }
@@ -265,7 +274,7 @@ function renderMetrics(d) {
    方便把一次检测结果带出去排查。数据源与渲染共用 buildTableRows，
    当前维度筛选选了什么，复制出来的就是什么。 */
 function buildCopyText(d) {
-  const { dimRows, itemRows } = buildTableRows(d);
+  const { dimRows, groups } = buildTableRows(d);
   const s = d.summary;
   const lines = [
     `墨尺检测 · ${s.chapters} 章 · ${s.chars.toLocaleString()} 字`,
@@ -275,10 +284,12 @@ function buildCopyText(d) {
     lines.push([r.name, num(r.you, 2), num(r.bench, 2),
       itemTag(r.you, r.bench).tag].join('\t'));
   }
-  lines.push('—— 逐项对比 ——');
-  for (const r of itemRows) {
-    lines.push([r.name, num(r.you), num(r.bench),
-      itemTag(r.you, r.bench).tag].join('\t'));
+  for (const g of groups) {
+    lines.push(`—— ${g.name} ——`);
+    for (const k of g.items) {
+      lines.push([(d.label && d.label[k]) || k, num(s.items[k]), num(d.bench.items[k]),
+        itemTag(s.items[k], d.bench.items[k]).tag].join('\t'));
+    }
   }
   return lines.join('\n');
 }
@@ -412,8 +423,10 @@ function render(d) {
     '<div class="v">代入</div><div class="v">节奏</div><div class="v">句法</div>' +
     '<div class="v">总分</div></div>';
   for (const c of d.chapters) {
+    // 标题来自被检测的文件原文，进 innerHTML 前必须转义（内容与 title 属性两处）。
+    const t = esc(c.title);
     ch += `<div class="crow">
-      <div class="t" title="${c.title}">${c.title}</div>
+      <div class="t" title="${t}">${t}</div>
       <div class="v">${c.chars}</div>
       <div class="v ${scCls(c.score.real)}">${c.score.real.toFixed(1)}</div>
       <div class="v ${scCls(c.score.human)}">${c.score.human.toFixed(1)}</div>
@@ -423,7 +436,7 @@ function render(d) {
       <div class="v ${scCls(c.score.total)}">${c.score.total.toFixed(1)}</div>
     </div>`;
     if (c.violations && c.violations.length) {
-      ch += `<div class="viol">⚠ ${c.violations.map(v => v.name).join('、')}</div>`;
+      ch += `<div class="viol" title="${esc(c.violations.map(v => `${v.name}：${v.detail}`).join('\n'))}">⚠ ${c.violations.map(v => esc(v.name)).join('、')}</div>`;
     }
   }
   $('#chapters').innerHTML = ch;

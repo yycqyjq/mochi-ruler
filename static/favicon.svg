@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- 墨尺 · 印章式站点图标：朱砂底 + 纸色「尺」字 -->
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#b5402f"/>
+  <text x="32" y="43" font-family="Songti SC, Noto Serif SC, STSong, serif"
+        font-size="36" font-weight="700" fill="#fbf8f0"
+        text-anchor="middle">尺</text>
+</svg>
