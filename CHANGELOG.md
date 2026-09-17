@@ -2,6 +2,15 @@
 
 本项目的所有重要变更记录于此。版本遵循语义化版本（主版本.次版本.修订号）。
 
+## [未发布]
+
+### 新增
+
+- 桌面版（Electron + PyInstaller sidecar）：应用名「墨尺」，push `v*` tag 自动在
+  GitHub Actions 云端构建 macOS（arm64/x64 .dmg）与 Windows（.exe 安装器）并发布
+  到 Release；壳只负责 spawn 评分核心与开窗口，评分口径与浏览器版一致；
+  未签名发布（macOS 右键打开 / Windows 过 SmartScreen）
+
 ## [1.0.0] - 2026-09-17
 
 首个正式版本。
@@ -45,7 +54,3 @@
 - 开发工具箱：audit（区分度体检）/ calibrate（阈值标定）/ bench_build（重建
   基准）/ layout_scan（排版噪声）/ sent_scan（引号碎片）/ expand_eval（加指标
   余量）/ regress（零回归）/ narrative（叙事诊断视图）
-
-## [未发布]
-
-暂无。

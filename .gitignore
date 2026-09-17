@@ -2,9 +2,18 @@
 .workbuddy
 .workbuddy-ai
 
-# Python 构建产物
+# Python 构建产物（锚定根目录，勿伤 desktop/build/ 图标）
 __pycache__
 *.py[cod]
+/build/
+/dist/
+/*.spec
+
+# 桌面版（Electron）
+desktop/node_modules/
+desktop/release/
+desktop/sidecar/*
+!desktop/sidecar/.gitkeep
 
 # macOS
 .DS_Store

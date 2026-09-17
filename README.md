@@ -64,6 +64,16 @@ python3 server.py 9000
 
 不支持的格式会弹窗提示并跳过。
 
+## 桌面版（Electron）
+
+不想碰终端的话，可以用双击即用的桌面版：**push `v*` tag 后，GitHub Actions 自动在云端构建 macOS 与 Windows 安装包并挂到 [Releases](https://github.com/yycqyjq/mochi-ruler/releases) 页**（macOS 出 arm64 + Intel x64 的 .dmg，Windows 出 .exe 安装器）。
+
+- **架构**：PyInstaller 把零依赖评分核心冻结成单文件 sidecar，Electron 壳只负责挑空闲端口、开窗口加载 `http://127.0.0.1:随机端口`——评分口径与浏览器版完全一致，正文同样不出本机
+- **未签名发布**：macOS 首次打开需**右键 → 打开**（Gatekeeper 提示），Windows 首次运行过 SmartScreen 点「仍要运行」；签名需要付费证书，暂未配置
+- **本地开发**：`cd desktop && npm install && npm run dev`（需本机 python3，壳会直接起 server.py）
+- **本地打包**：先 `python3 -m PyInstaller --onefile --name mochi-server --add-data "static:static" server.py` 并把产物拷进 `desktop/sidecar/`，再 `npx electron-builder --dir`
+- **云端构建**：手动触发（Actions 页 run workflow）只构建不出 Release，产物挂 workflow artifacts，用于正式发布前空跑；正式发布 `git tag v1.x.x && git push origin v1.x.x`
+
 ## 结果怎么看
 
 **所有分数都是 0–10，越高越好**（越高越不像 AI 网文）。「标杆」= 内置预置基准值。

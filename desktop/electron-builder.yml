@@ -1,0 +1,36 @@
+# 墨尺桌面版打包配置（electron-builder）
+# 发布：push v* tag → .github/workflows/release.yml 自动构建双平台并挂 Release。
+# 未签名发布（用户已拍板）：mac 首次打开需右键 → 打开；Windows 过 SmartScreen 点「仍要运行」。
+appId: io.github.yycqyjq.mochi-ruler
+productName: 墨尺
+directories:
+  output: release
+  buildResources: build
+# 壳里只有主进程代码；评分核心是 extraResources 里的 PyInstaller sidecar
+files:
+  - main.js
+  - package.json
+extraResources:
+  - from: sidecar
+    to: sidecar
+mac:
+  # dmg 供安装，zip 供将来 electron-updater 自动更新
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+    - target: zip
+      arch: [arm64, x64]
+  category: public.app-category.productivity
+  identity: null          # 明确跳过签名
+  darkModeSupport: true
+  artifactName: 墨尺-${version}-${arch}.${ext}
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+  artifactName: 墨尺-${version}-${arch}-setup.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: always
+  shortcutName: 墨尺

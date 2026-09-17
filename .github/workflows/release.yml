@@ -1,0 +1,94 @@
+# 墨尺桌面版发布：push v* tag 自动构建 macOS（arm64 + x64 dmg/zip）
+# 与 Windows（x64 NSIS 安装器），挂到 GitHub Release。
+# 手动触发（Actions 页 run workflow）只构建不发布，产物挂 workflow artifacts，
+# 用于正式打 tag 前空跑验证云端构建。
+# 未签名发布：产物首次打开需右键 → 打开（mac）/ 过 SmartScreen（win），
+# README「桌面版」一节有说明。
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            py: python3
+          - os: windows-latest
+            py: python
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      # 评分核心冻结成单文件 sidecar（零依赖，PyInstaller 不用处理任何 pip 树）。
+      # --add-data 把 static/ 一起打包（server 用 __file__ 定位，冻结后在
+      # _MEIPASS 解包目录）；分隔符 mac/linux 是冒号、Windows 是分号。
+      # --noconsole 仅 Windows 需要（避免 sidecar 弹控制台）；macOS 上该选项
+      # 等价 --windowed 会产出 .app 包，sidecar 要的是裸可执行文件，故不加。
+      - name: 打包后端 sidecar（PyInstaller）
+        shell: bash
+        run: |
+          ${{ matrix.py }} -m pip install --upgrade pip pyinstaller
+          sep=":"
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            sep=";"
+            ${{ matrix.py }} -m PyInstaller --onefile --noconsole \
+              --name mochi-server --add-data "static${sep}static" server.py
+          else
+            ${{ matrix.py }} -m PyInstaller --onefile \
+              --name mochi-server --add-data "static${sep}static" server.py
+          fi
+          mkdir -p desktop/sidecar
+          cp dist/mochi-server* desktop/sidecar/
+          chmod +x desktop/sidecar/mochi-server 2>/dev/null || true
+          ls -la desktop/sidecar/
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 安装依赖
+        working-directory: desktop
+        run: npm ci
+
+      - name: 版本号对齐 tag
+        if: github.event_name == 'push'
+        working-directory: desktop
+        shell: bash
+        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version
+
+      # tag 推送 → 构建并发布到 GitHub Release；手动触发 → 只构建，产物
+      # 挂 workflow artifacts 供下载验证
+      - name: 构建并发布到 GitHub Release
+        if: github.event_name == 'push'
+        working-directory: desktop
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npx electron-builder --publish always
+
+      - name: 仅构建（手动触发）
+        if: github.event_name == 'workflow_dispatch'
+        working-directory: desktop
+        run: npx electron-builder --dir
+
+      - name: 上传构建产物（手动触发）
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: 墨尺-${{ matrix.os }}
+          path: |
+            desktop/release/*.dmg
+            desktop/release/*.zip
+            desktop/release/*.exe
