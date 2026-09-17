@@ -64,11 +64,13 @@ jobs:
         working-directory: desktop
         run: npm ci
 
+      # package.json 里可能已经是对应版本（本地先对齐过），需 --allow-same-version，
+      # 否则 npm 会以「Version not changed」报错。
       - name: 版本号对齐 tag
         if: github.event_name == 'push'
         working-directory: desktop
         shell: bash
-        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version
+        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
 
       # tag 推送 → 构建并发布到 GitHub Release；手动触发 → 只构建，产物
       # 挂 workflow artifacts 供下载验证。
