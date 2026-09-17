@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!-- 朱砂印章 + 纸色「尺」（macOS 圆角比例；透明留白约 10%） -->
+  <rect x="100" y="100" width="824" height="824" rx="184" fill="#b5402f"/>
+  <rect x="101" y="101" width="822" height="822" rx="183" fill="none" stroke="#9c3222" stroke-width="2"/>
+  <text x="526" y="655" text-anchor="middle" font-family="Songti SC, Noto Serif SC, STSong, serif" font-size="520" font-weight="700" fill="#fbf6ea">尺</text>
+</svg>

@@ -83,10 +83,34 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx electron-builder --publish always
 
-      - name: 仅构建（手动触发）
+      # 手动触发（空跑验证）：完整构建 dmg / exe 但不发布，产物挂 workflow
+      # artifacts 供下载核验（--dir 模式没有可验证的安装包）。
+      - name: 构建但不发布（手动触发）
         if: github.event_name == 'workflow_dispatch'
         working-directory: desktop
-        run: npx electron-builder --dir
+        run: npx electron-builder --publish never
+
+      # 签名兜底校验（macOS）：afterPack 已在打包时验过一遍，这里对成品
+      # 再验一遍；未通过 ad-hoc 校验的应用下载后会被 Gatekeeper 判「已损坏」。
+      - name: 校验 macOS 签名（兜底）
+        if: runner.os == 'macOS'
+        shell: bash
+        working-directory: desktop
+        run: |
+          found=0
+          for d in release/mac-arm64 release/mac; do
+            [ -d "$d" ] || continue
+            app=""
+            for cand in "$d"/*.app; do
+              [ -e "$cand" ] && app="$cand" && break
+            done
+            [ -n "$app" ] || { echo "no .app under $d"; exit 1; }
+            found=1
+            echo "== $app =="
+            codesign --verify --deep --strict "$app"
+            codesign -dv "$app" 2>&1 | grep -E 'Signature=|Identifier='
+          done
+          [ "$found" = 1 ] || { echo "no mac app dirs found"; exit 1; }
 
       - name: 上传构建产物（手动触发）
         if: github.event_name == 'workflow_dispatch'

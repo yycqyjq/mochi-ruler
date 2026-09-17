@@ -1,7 +1,7 @@
 # 墨尺 · 网文质检
 
 > 量文字的尺。检测中文网文的「AI 味」——**满分 10 分，越高越不像 AI**。
-> 当前版本 v1.0.0 · 变更记录见 [CHANGELOG.md](CHANGELOG.md)
+> 当前版本 v1.1.1 · 变更记录见 [CHANGELOG.md](CHANGELOG.md)
 
 墨尺是一个跑在本机的**中文网文「读感 lint」**。它把正文拆成章节，逐项量出那些「读起来像机器写的」特征：代词是不是过密、句子是不是被切得太碎、有没有把感官写成分镜脚本、人物有没有真正在「想」。然后折算成 0–10 分，与内置的真人长篇基准对照，**指出最该先改的项**。
 
@@ -69,7 +69,7 @@ python3 server.py 9000
 不想碰终端的话，可以用双击即用的桌面版：**push `v*` tag 后，GitHub Actions 自动在云端构建 macOS 与 Windows 安装包并挂到 [Releases](https://github.com/yycqyjq/mochi-ruler/releases) 页**（macOS 出 arm64 + Intel x64 的 .dmg，Windows 出 .exe 安装器）。
 
 - **架构**：PyInstaller 把零依赖评分核心冻结成单文件 sidecar，Electron 壳只负责挑空闲端口、开窗口加载 `http://127.0.0.1:随机端口`——评分口径与浏览器版完全一致，正文同样不出本机
-- **未签名发布**：macOS 首次打开需**右键 → 打开**（Gatekeeper 提示），Windows 首次运行过 SmartScreen 点「仍要运行」；签名需要付费证书，暂未配置
+- **未签名发布**：安装包已做 ad-hoc 签名（v1.1.1 起，真机验证通过）。macOS 首次打开需**右键 → 打开**；如遇「已损坏」提示（下载缓存等极少数情况），可在终端执行 `xattr -cr /Applications/墨尺.app` 后重开。Windows 首次运行过 SmartScreen 点「仍要运行」；签名与公证需要付费证书，暂未配置
 - **本地开发**：`cd desktop && npm install && npm run dev`（需本机 python3，壳会直接起 server.py）
 - **本地打包**：先 `python3 -m PyInstaller --onefile --name mochi-server --add-data "static:static" server.py` 并把产物拷进 `desktop/sidecar/`，再 `npx electron-builder --dir`
 - **云端构建**：手动触发（Actions 页 run workflow）只构建不出 Release，产物挂 workflow artifacts，用于正式发布前空跑；正式发布 `git tag v1.x.x && git push origin v1.x.x`

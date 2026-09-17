@@ -13,6 +13,12 @@ files:
 extraResources:
   - from: sidecar
     to: sidecar
+
+# 组装完成后对 macOS 应用补做 ad-hoc 深签名（无证书环境的标准做法）：
+# 未签名的 arm64 应用从网上下载会被 Gatekeeper 判「已损坏」而无法打开；
+# ad-hoc 签名后首次打开走「右键 → 打开」即可。脚本内附 codesign --verify
+# 校验，失败会直接中止构建（宁可红，不出坏包）。
+afterPack: scripts/after-pack.js
 mac:
   # 只出 dmg：zip/blockmap/latest*.yml 都是 electron-updater 自动更新的配套，
   # 本应用未内置更新器，对下载者只是噪声（发布后由 workflow 清理步兜底删除）
@@ -20,7 +26,7 @@ mac:
     - target: dmg
       arch: [arm64, x64]
   category: public.app-category.productivity
-  identity: null          # 明确跳过签名
+  identity: null          # 无证书：不进入钥匙串签名流程；组装完成后由 afterPack 做 ad-hoc 签名
   darkModeSupport: true
   artifactName: mochi-ruler-${version}-${arch}.${ext}  # 若中文包名在 CI 稳定，可改回 墨尺-${version}-${arch}
 win:
