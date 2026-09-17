@@ -34,3 +34,8 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: always
   shortcutName: 墨尺
+
+# tag 推送后直接发布为正式 Release（默认是 draft，需手动在 Releases 页点 Publish）
+publish:
+  provider: github
+  releaseType: release
