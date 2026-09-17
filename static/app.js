@@ -186,7 +186,9 @@ function dimItemsOf(d) {
 // 逐项对比：每项一个 0–10 分，越高越好，不需要方向表。
 // 每项标签旁有一个 ? —— 悬停 / 聚焦 / 点击可看该指标的「口径说明 + 原始值」。
 // 这里把气泡内容存进 TIPDATA，? 上只放指标键，避免把长文本塞进 data 属性。
+// 逐章列表里的违规芯片用同一气泡（VIOL_TIPS），键空间互不重叠。
 let TIPDATA = {};
+let VIOL_TIPS = {};
 
 // 合并表的数据源：维度总分行（含总分）+ 按维度分组的逐项行，渲染与复制共用，
 // 保证屏幕上看到的和复制出去的永远一致。维度筛选（dimSel）在这里生效：
@@ -309,9 +311,8 @@ function renderMetrics(d) {
 /* 复制表格 ---------------------------------------------------------------
    把合并表复制成制表符分隔的纯文本，可直接贴进表格软件或聊天窗口，
    方便把一次检测结果带出去排查。数据源与渲染共用 buildTableRows，
-   当前维度筛选选了什么，复制出来的就是什么。 */
-function buildCopyText(d) {
-  const { dimRows, groups } = buildTableRows(d);
+   当前维度筛选选了什么，复制出来的就是什么。 */function buildCopyText(d) {
+  const { dimRows, groups, itemDim } = buildTableRows(d);
   const s = d.summary;
   const lines = [
     `墨尺检测 · ${s.chapters} 章 · ${s.chars.toLocaleString()} 字`,
@@ -324,9 +325,30 @@ function buildCopyText(d) {
   for (const g of groups) {
     lines.push(`—— ${g.name} ——`);
     for (const k of g.items) {
-      lines.push([(d.label && d.label[k]) || k, num(s.items[k]), num(d.bench.items[k]),
+      const dimName = itemDim && itemDim[k]
+        ? '·' + (d.dimlabel[itemDim[k]] || itemDim[k]) : '';
+      lines.push([(d.label && d.label[k]) || k + dimName,
+        num(s.items[k]), num(d.bench.items[k]),
         itemTag(s.items[k], d.bench.items[k]).tag].join('\t'));
     }
+  }
+  return lines.join('\n');
+}
+
+// 复制逐章：应用当前排序与违规过滤后的逐章分数表（含违规名）。
+function buildChaptersCopy(d) {
+  const list = chapterList(d);
+  const head = `墨尺检测 · ${d.summary.chapters} 章 · ${d.summary.chars.toLocaleString()} 字 —— 逐章` +
+    (chSort === 'low' ? '（按总分最低）' : '') + (chOnlyViol ? '（只看有违规）' : '');
+  const lines = [
+    head,
+    ['章', '字数', '真人感', '人味', '代入', '节奏', '句法', '总分', '违规'].join('\t'),
+  ];
+  for (const { c } of list) {
+    lines.push([c.title, c.chars,
+      c.score.real.toFixed(1), c.score.human.toFixed(1), c.score.imm.toFixed(1),
+      c.score.rhy.toFixed(1), c.score.syn.toFixed(1), c.score.total.toFixed(1),
+      (c.violations || []).map(v => v.name).join('、')].join('\t'));
   }
   return lines.join('\n');
 }
@@ -375,7 +397,7 @@ function positionTip(qi) {
 }
 
 function showTip(qi) {
-  const info = TIPDATA[qi.dataset.k];
+  const info = TIPDATA[qi.dataset.k] || VIOL_TIPS[qi.dataset.k];
   if (!info) return;
   clearTimeout(tipTimer);
   const el = tipEl();
@@ -388,8 +410,10 @@ function showTip(qi) {
   };
   add('tip-title', info.name);
   add('tip-desc', info.desc);
-  add('tip-raw', `原始值　你 ${info.raw}　标杆 ${info.benchRaw}` +
-    (info.dir ? `　·　${info.dir}` : ''));
+  if (info.raw !== undefined) {
+    add('tip-raw', `原始值　你 ${info.raw}　标杆 ${info.benchRaw}` +
+      (info.dir ? `　·　${info.dir}` : ''));
+  }
   el.dataset.k = qi.dataset.k;
   tipAnchor = qi;
   el.hidden = false;
@@ -508,6 +532,15 @@ function chapterDetailHTML(d, c) {
   return `<div class="chdetail"><div class="chd-items">${itemsPart}</div>${violPart}</div>`;
 }
 
+// 逐章列表的数据源：应用当前排序与违规过滤。渲染与「复制逐章」共用，
+// 保证屏幕上看到的和复制出去的永远一致。
+function chapterList(d) {
+  const list = d.chapters.map((c, i) => ({ c, i }));
+  if (chOnlyViol) list = list.filter(x => x.c.violations && x.c.violations.length);
+  if (chSort === 'low') list.sort((a, b) => a.c.score.total - b.c.score.total);
+  return list;
+}
+
 // 逐章列表：可按原文顺序或总分排序，可只看有违规的章；超过 CHAPTER_LIMIT
 // 截断（几千章一次性渲染会卡 DOM），章行点击展开该章问题明细。
 function renderChapters(d) {
@@ -515,10 +548,9 @@ function renderChapters(d) {
   document.querySelectorAll('#chsortseg button').forEach(b =>
     b.classList.toggle('on', b.dataset.chsort === chSort));
   $('#onlyviol').classList.toggle('on', chOnlyViol);
+  VIOL_TIPS = {};
 
-  let list = d.chapters.map((c, i) => ({ c, i }));
-  if (chOnlyViol) list = list.filter(x => x.c.violations && x.c.violations.length);
-  if (chSort === 'low') list.sort((a, b) => a.c.score.total - b.c.score.total);
+  const list = chapterList(d);
   const truncated = !showAllChapters && list.length > CHAPTER_LIMIT;
   const shown = truncated ? list.slice(0, CHAPTER_LIMIT) : list;
 
@@ -539,7 +571,13 @@ function renderChapters(d) {
       <div class="v ${scCls(c.score.total)}">${c.score.total.toFixed(1)}</div>
     </div>`;
     if (c.violations && c.violations.length) {
-      ch += `<div class="viol" title="${esc(c.violations.map(v => `${v.name}：${v.detail}`).join('\n'))}">⚠ ${c.violations.map(v => esc(v.name)).join('、')}</div>`;
+      // 违规名做成芯片：点/悬停用同一气泡看完整 detail，不再靠原生 title。
+      ch += '<div class="viol">⚠ ' + c.violations.map((v, vi) => {
+        const vk = `v${i}-${vi}`;
+        VIOL_TIPS[vk] = { name: v.name, desc: v.detail };
+        return `<button type="button" class="vchip" data-k="${vk}"` +
+          ` aria-label="${esc(v.name)} 的违规详情">${esc(v.name)}</button>`;
+      }).join('、') + '</div>';
     }
     if (expandedCh.has(i)) ch += chapterDetailHTML(d, c);
   }
@@ -862,6 +900,18 @@ document.addEventListener('DOMContentLoaded', () => {
       popup('复制失败', '浏览器没有放行剪贴板写入，请手动选中表格内容复制。', 'error');
     }
   };
+  // 复制逐章：应用当前排序 / 违规过滤后的逐章分数表，与逐章列表同一数据源。
+  $('#chcopy').onclick = async () => {
+    if (!LAST) return;
+    const ok = await copyText(buildChaptersCopy(LAST));
+    if (ok) {
+      const btn = $('#chcopy'), old = btn.textContent;
+      btn.textContent = '已复制';
+      setTimeout(() => { btn.textContent = old; }, 1400);
+    } else {
+      popup('复制失败', '浏览器没有放行剪贴板写入，请手动选中内容复制。', 'error');
+    }
+  };
   // 点维度卡切换选中；选中后逐项对比只显示这些维度覆盖的指标。
   $('#scores').addEventListener('click', e => {
     const el = e.target.closest('.sc[data-dim]');
@@ -944,46 +994,48 @@ document.addEventListener('DOMContentLoaded', () => {
       crow.querySelector('.twist').textContent = '▾';
     }
   });
-  // ? 的口径说明：鼠标走悬停、键盘走聚焦、触屏走点按，按指针类型分流。
+  // 气泡触发：鼠标走悬停、键盘走聚焦、触屏走点按，按指针类型分流。
+  // 挂在 document 上做事件委托，同时覆盖逐项表的 .qi 和逐章列表的违规
+  // .vchip——两处共用同一个气泡。
   //
   // 用 pointerover / pointerout（会冒泡、且带 pointerType），**不用** mouseover /
   // mouseout：触屏点按后浏览器会补发一整套兼容鼠标事件，其中末尾那个 mouseout
   // 会把刚点开的气泡立刻关掉，表现为「点了没反应」。
-  const qiOf = e => (e.target.closest ? e.target.closest('.qi') : null);
-  $('#metrics').addEventListener('pointerover', e => {
+  const tipOf = e => (e.target.closest ? e.target.closest('.qi, .vchip') : null);
+  document.addEventListener('pointerover', e => {
     if (e.pointerType === 'touch') return;
-    const qi = qiOf(e);
+    const qi = tipOf(e);
     if (qi) showTip(qi);
   });
-  $('#metrics').addEventListener('pointerout', e => {
+  document.addEventListener('pointerout', e => {
     if (e.pointerType === 'touch') return;
-    const qi = qiOf(e);
+    const qi = tipOf(e);
     if (!qi) return;
     if (e.relatedTarget && qi.contains(e.relatedTarget)) return;
     scheduleHide();
   });
-  $('#metrics').addEventListener('focusin', e => {
-    const qi = qiOf(e);
+  document.addEventListener('focusin', e => {
+    const qi = tipOf(e);
     if (qi) showTip(qi);
   });
-  $('#metrics').addEventListener('focusout', e => {
-    if (qiOf(e)) scheduleHide();
+  document.addEventListener('focusout', e => {
+    if (tipOf(e)) scheduleHide();
   });
   // 键盘敲 Enter / Space：原生 <button> 会合成 click，其 event.detail 恒为 0。
   // 用它跟鼠标点击区分开——鼠标点击不参与（鼠标走 hover）。
   // 也补上「Esc 收起后元素仍是聚焦态、focusin 不会再触发」这个缺口。
-  $('#metrics').addEventListener('click', e => {
+  document.addEventListener('click', e => {
     if (e.detail !== 0) return;
-    const qi = qiOf(e);
+    const qi = tipOf(e);
     if (!qi) return;
     e.preventDefault();
     if (tipEl().dataset.k === qi.dataset.k && !tipEl().hidden) hideTip();
     else showTip(qi);
   });
-  // 触屏：同一 ? 再点一次收起。鼠标与键盘不参与（分别是 hover / focus）。
-  $('#metrics').addEventListener('pointerdown', e => {
+  // 触屏：同一目标再点一次收起。鼠标与键盘不参与（分别是 hover / focus）。
+  document.addEventListener('pointerdown', e => {
     if (e.pointerType !== 'touch') return;
-    const qi = qiOf(e);
+    const qi = tipOf(e);
     if (!qi) return;
     e.preventDefault();
     if (tipEl().dataset.k === qi.dataset.k && !tipEl().hidden) hideTip();
@@ -994,7 +1046,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.pointerType !== 'touch') return;
     const el = tipEl();
     if (el.hidden || !e.target.closest) return;
-    if (e.target.closest('.qi') || e.target.closest('#tip')) return;
+    if (e.target.closest('.qi, .vchip') || e.target.closest('#tip')) return;
     hideTip();
   });
   // 气泡本身可悬停，移进去时不要消失。

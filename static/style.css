@@ -509,6 +509,14 @@ textarea.on {
   background: color-mix(in srgb, var(--warn) 8%, transparent);
   border-bottom: 1px solid var(--line);
 }
+/* 违规名芯片：点 / 悬停用与「?」同一个气泡看完整 detail（不再靠原生 title） */
+.vchip {
+  -webkit-appearance: none; appearance: none;
+  font: inherit; font-size: inherit; line-height: inherit;
+  color: inherit; background: transparent; border: 0; padding: 0;
+  border-bottom: 1px dashed currentColor; cursor: help;
+}
+.vchip:hover, .vchip:focus-visible { color: var(--accent); outline: none; }
 
 /* ── 提示浮层 ─────────────────────────────────────────────── */
 
