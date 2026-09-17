@@ -22,7 +22,12 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(ROOT, 'static')
-PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
+try:
+    PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
+except ValueError:
+    sys.exit('端口必须是数字：%r\n用法：python3 server.py [端口]（默认 8765）' % sys.argv[1])
+# 请求体上限：百万字长文足够（约 30MB），防异常大包把内存读爆。
+MAX_BODY_BYTES = 64 * 1024 * 1024
 
 # 按维度分组，组内顺序即展示顺序。这里只决定「展示哪些、按什么次序」，
 # 不参与打分——权重与阈值一律以 qc_core 各维权重表为准。
@@ -329,7 +334,14 @@ class H(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path.split('?')[0] != '/api/analyze':
             return self._send(404, b'not found', 'text/plain')
-        n = int(self.headers.get('Content-Length', 0))
+        try:
+            n = int(self.headers.get('Content-Length', 0))
+        except (TypeError, ValueError):
+            return self._send(400, b'bad content-length', 'text/plain')
+        if n <= 0:
+            return self._send(400, b'empty body', 'text/plain')
+        if n > MAX_BODY_BYTES:
+            return self._send(413, b'too large', 'text/plain')
         raw = self.rfile.read(n).decode('utf-8', 'ignore')
         try:
             req = json.loads(raw)
