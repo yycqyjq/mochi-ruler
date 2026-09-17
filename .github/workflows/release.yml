@@ -16,6 +16,8 @@ permissions:
 
 jobs:
   build:
+    # v1.0.0 等桌面版之前的 tag 没有 desktop/，跳过以免空跑失败
+    if: hashFiles('desktop/package.json') != ''
     strategy:
       fail-fast: false
       matrix:
