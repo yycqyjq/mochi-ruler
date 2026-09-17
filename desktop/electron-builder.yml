@@ -23,12 +23,12 @@ mac:
   category: public.app-category.productivity
   identity: null          # 明确跳过签名
   darkModeSupport: true
-  artifactName: 墨尺-${version}-${arch}.${ext}
+  artifactName: mochi-ruler-${version}-${arch}.${ext}  # 若中文包名在 CI 稳定，可改回 墨尺-${version}-${arch}
 win:
   target:
     - target: nsis
       arch: [x64]
-  artifactName: 墨尺-${version}-${arch}-setup.${ext}
+  artifactName: mochi-ruler-${version}-${arch}-setup.${ext}
 nsis:
   oneClick: false
   allowToChangeInstallationDirectory: true
