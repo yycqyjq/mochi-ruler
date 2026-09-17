@@ -79,7 +79,9 @@ def feats(body, strip):
         "cv": (st.pstdev(lens) / st.mean(lens)) if len(lens) > 2 else 0.0,
         "sent_den": len(ss) / k,
         "question": body.count("\uff1f") / n * 100.0,
-        "emo_type": len(set(q.EMO.findall(body))) / n * 100.0,
+        # ⚠ 必须用 EMO_ALL（= EMO ∪ EMO_WORD），与 qc_core.metrics() 的 emo_type
+        # 口径一致。用裸 EMO 会漏掉二字情绪词，扫出来的项级 sep 偏低。
+        "emo_type": len(set(q.EMO_ALL.findall(body))) / n * 100.0,
         "net_short": sum(1 for s in ss if len(s) <= 10) / n,
     }
 
