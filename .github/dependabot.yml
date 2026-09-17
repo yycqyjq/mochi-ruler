@@ -1,0 +1,21 @@
+# 依赖巡检：让 action 的运行时版本别再悄悄过期。
+# 起因：2026-09-17 发现四个 action 仍 pin 在 node20 运行时，GitHub 已强制把它们
+# 降级到 node24 运行并告警，兼容开关一撤构建即红——而这类问题此前只能靠人工
+# 翻构建日志才会发现（本次就是这么发现的）。
+# 策略：只跟 GitHub Actions，月度检查，同一批变更合成一个 PR（避免刷屏）。
+# 如需一并跟踪桌面版 Electron 依赖，再加一段：
+#   - package-ecosystem: npm
+#     directory: /desktop
+#     schedule: { interval: monthly }
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "ci"
+    groups:
+      actions:
+        patterns: ["*"]

@@ -2,6 +2,19 @@
 
 本项目的所有重要变更记录于此。版本遵循语义化版本（主版本.次版本.修订号）。
 
+## [未发布]
+
+### 工程
+
+- CI 与发布流水线的 action 升到 node24 运行时（checkout v5 / setup-python v6 /
+  setup-node v5 / upload-artifact v6），消除 GitHub 的 Node 20 弃用告警——
+  此前靠强制降级才没红，兼容开关一撤构建即失败。注意 `upload-artifact@v5`
+  仍跑 node20，必须 v6 起
+- CI 工作流补 `workflow_dispatch`，排查时可直接手动空跑，无需推 commit
+- 新增 `.github/dependabot.yml`：月度巡检 action 版本，避免同类过期问题
+  再次只能靠人工翻日志发现
+- `desktop/package-lock.json` 版本字段与 `package.json` 对齐（1.0.0 → 1.1.1）
+
 ## [1.1.1] - 2026-09-17
 
 ### 修正
