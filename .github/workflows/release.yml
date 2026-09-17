@@ -4,6 +4,7 @@
 # 用于正式打 tag 前空跑验证云端构建。
 # 未签名发布：产物首次打开需右键 → 打开（mac）/ 过 SmartScreen（win），
 # README「桌面版」一节有说明。
+# 注：v1.0.0 等早期 tag 的树里没有本文件，推送它们不会触发任何构建，无需守卫。
 name: Release
 
 on:
@@ -16,8 +17,6 @@ permissions:
 
 jobs:
   build:
-    # v1.0.0 等桌面版之前的 tag 没有 desktop/，跳过以免空跑失败
-    if: hashFiles('desktop/package.json') != ''
     strategy:
       fail-fast: false
       matrix:
@@ -72,11 +71,15 @@ jobs:
         run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version
 
       # tag 推送 → 构建并发布到 GitHub Release；手动触发 → 只构建，产物
-      # 挂 workflow artifacts 供下载验证
+      # 挂 workflow artifacts 供下载验证。
+      # GH_TOKEN 是 electron-builder 的首选令牌变量（publish 走它）；
+      # GITHUB_TOKEN 同时保留作兜底。发布定位仓库靠 desktop/package.json
+      # 的 repository 字段——缺它 publish 会直接报错（首轮失败的主因）。
       - name: 构建并发布到 GitHub Release
         if: github.event_name == 'push'
         working-directory: desktop
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx electron-builder --publish always
 
@@ -89,7 +92,7 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
-          name: 墨尺-${{ matrix.os }}
+          name: mochi-desktop-${{ matrix.os }}
           path: |
             desktop/release/*.dmg
             desktop/release/*.zip
