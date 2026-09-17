@@ -22,6 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(ROOT, 'static')
+VERSION = '1.0.0'
 try:
     PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
 except ValueError:
@@ -363,7 +364,7 @@ class H(BaseHTTPRequestHandler):
 
 if __name__ == '__main__':
     print()
-    print('  墨尺 · 网文质检')
+    print('  墨尺 · 网文质检 v%s' % VERSION)
     print('  ─────────────────────────────')
     print('  http://127.0.0.1:%d' % PORT)
     print('  Ctrl+C 停止')
