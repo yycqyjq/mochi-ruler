@@ -83,12 +83,14 @@ function showSource(meta) {
   $('#source-name').textContent = meta.name;
   $('#source-count').textContent = `${meta.files} 个文本文件`;
   $('.folder-mark').textContent = meta.kind === 'file' ? '📄' : '📁';
+  // 不在载入时报章节数：前端估算与后端拆章（7 种模式选型）口径不一致，
+  // 会出现「载入说 12 章、检测完 10 章」——章节数只认检测结果。
   $('#source-info').textContent =
     `已识别：${meta.files} 个文件\n` +
     `支持格式：${meta.formats}\n` +
     (meta.encNote ? `解码：${meta.encNote}\n` : '') +
     `总字数：${meta.chars.toLocaleString()}\n` +
-    `识别章节：${meta.chapters} 章` +
+    `章节：以检测结果为准` +
     (meta.skipped ? `\n跳过格式：${meta.skipped} 个` : '');
   $('#sourcebar').hidden = false;
 }
@@ -590,6 +592,44 @@ function renderChapters(d) {
   $('#chapters').innerHTML = ch;
 }
 
+// 五维雷达：实线=你，朱砂虚线=标杆。SVG 手绘零依赖；颜色用 CSS 变量
+// （必须走 style 属性——SVG 表现属性不支持 var()），明暗主题自动跟随。
+function renderRadar(d) {
+  const C = 95, R = 72, N = d.dims.length;
+  const pt = (i, v) => {
+    const a = -Math.PI / 2 + i * 2 * Math.PI / N;
+    const r = R * Math.max(0, Math.min(10, v)) / 10;
+    return [C + r * Math.cos(a), C + r * Math.sin(a)];
+  };
+  const poly = vals => vals.map((v, i) =>
+    pt(i, v).map(x => x.toFixed(1)).join(',')).join(' ');
+  let svg = '<svg viewBox="0 0 190 190" role="img" ' +
+    'aria-label="五维雷达：实线为你，朱砂虚线为标杆">';
+  for (const f of [0.25, 0.5, 0.75, 1]) {
+    svg += `<polygon points="${poly(d.dims.map(() => 10 * f))}" ` +
+      'style="fill:none;stroke:var(--line);stroke-width:1"/>';
+  }
+  for (let i = 0; i < N; i++) {
+    const [x, y] = pt(i, 10);
+    svg += `<line x1="${C}" y1="${C}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" ` +
+      'style="stroke:var(--line);stroke-width:1"/>';
+  }
+  svg += `<polygon points="${poly(d.dims.map(k => d.bench[k]))}" ` +
+    'style="fill:none;stroke:var(--verm);stroke-width:1.5;stroke-dasharray:4 3"/>';
+  svg += `<polygon points="${poly(d.dims.map(k => d.summary[k]))}" ` +
+    'style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:2;stroke-linejoin:round"/>';
+  for (let i = 0; i < N; i++) {
+    const [x, y] = pt(i, 10);
+    const lx = C + (x - C) * 1.17, ly = C + (y - C) * 1.17;
+    const k = d.dims[i];
+    svg += `<text x="${lx.toFixed(1)}" y="${(ly + 3).toFixed(1)}" text-anchor="middle" ` +
+      `style="font:700 10px var(--serif);fill:var(--dim)">${d.dimlabel[k]} ` +
+      `${d.summary[k].toFixed(1)}</text>`;
+  }
+  svg += '</svg>';
+  $('#radar').innerHTML = svg;
+}
+
 function render(d) {
   $('#empty').hidden = true;
   $('#result').hidden = false;
@@ -627,6 +667,7 @@ function render(d) {
     </div>`;
 
   renderFixbar(d);
+  renderRadar(d);
   renderScores(d);
   renderMetrics(d);
   renderChapters(d);
@@ -657,7 +698,8 @@ async function run() {
     const r = await fetch('/api/analyze', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
+      // light：省略每章的原始指标（前端只在汇总层用到），大书响应体减半
+      body: JSON.stringify({ text, light: true }),
       signal: ctrl.signal
     });
     if (!r.ok) throw new Error('检测失败：' + r.status);
@@ -749,7 +791,6 @@ function loadFiles(fs, sourceName = '', sourceKind = 'folder') {
         if (sourceName) {
           loadedText = joined;
           loadedFolder = sourceName;
-          const chapters = (joined.match(/(^|\n)\s*#\s*第[^\n]{1,20}[章节]/g) || []).length;
           showSource({
             name: sourceName,
             kind: sourceKind,
@@ -757,10 +798,9 @@ function loadFiles(fs, sourceName = '', sourceKind = 'folder') {
             skipped,
             encNote,
             formats: [...new Set(list.map(x => (x.name.match(/\.[^.]+$/) || [''])[0].toLowerCase()))].join('、') || '无',
-            chars: joined.replace(/\s/g, '').length,
-            chapters: chapters || countChapters(joined) || '未分章'
+            chars: joined.replace(/\s/g, '').length
           });
-          // 不清空输入框：run() 会把文件来源与手动输入合并检测，
+          // 不清空输入框：run() 会把来源与手动内容合并检测，
           // 与「移除来源时保留手动内容」保持同一设计。
         } else {
           loadedText = null;
@@ -769,10 +809,9 @@ function loadFiles(fs, sourceName = '', sourceKind = 'folder') {
           $('#sourcebar').hidden = true;
           $('#text').value = joined;
         }
-        const chapterHint = countChapters(joined);
         $('#hint').textContent = sourceName
-          ? `已载入 ${list.length} 个文件${encNote ? '，' + encNote : ''}；识别 ${chapterHint || '未分章'}；输入框内容会一起检测`
-          : `已载入 ${list.length} 个文件${encNote ? '，' + encNote : ''}；识别 ${chapterHint || '未分章'}` +
+          ? `已载入 ${list.length} 个文件${encNote ? '，' + encNote : ''}；章节以检测结果为准，输入框内容会一起检测`
+          : `已载入 ${list.length} 个文件${encNote ? '，' + encNote : ''}` +
           (skipped ? `（跳过 ${skipped} 个非文本文件）` : '');
       }
     };
@@ -1079,8 +1118,9 @@ document.addEventListener('DOMContentLoaded', () => {
   bindPaste($('#text'));
   $('#text').addEventListener('input', () => {
     if (loadedText === null && $('#text').value.trim()) {
+      // 手打输入的即时反馈只能算预估：拆章选型以后端为准，这里注明。
       const n = countChapters($('#text').value);
-      $('#hint').textContent = `输入内容 · 识别 ${n || '未分章'}`;
+      $('#hint').textContent = `输入内容 · 预估 ${n || '未分章'} 章 · 以检测为准`;
     }
   });
   document.addEventListener('keydown', e => {

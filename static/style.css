@@ -349,7 +349,20 @@ textarea.on {
 .tc-tag.mid { color: var(--warn); }
 .tc-tag.no { color: var(--bad); }
 
-/* ── 五维卡 ───────────────────────────────────────────────── */
+/* ── 五维 ───────────────────────────────────────────────── */
+
+/* 分数卡 + 雷达：放得下就并排，放不下雷达自动换行居中 */
+.scorezone { display: flex; flex-wrap: wrap; gap: 10px; align-items: stretch; }
+.scorezone .scores { flex: 1 1 auto; }
+.radar {
+  flex: none; width: 232px; box-sizing: border-box;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: var(--card); padding: 8px 4px;
+  margin: 0 auto;
+  display: flex; align-items: center;
+}
+.radar svg { width: 100%; height: auto; display: block; }
+@media (min-width: 1560px) { .radar { margin: 0 0 0 auto; } }
 
 .scores { display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr)); gap: 10px; }
 
@@ -502,6 +515,12 @@ textarea.on {
 }
 .crow .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .crow .v { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* 分数格热力底色：按分档淡染，长列表里问题章直接跳出来 */
+.crow .v.good, .crow .v.warn, .crow .v.bad { border-radius: 5px; padding: 1px 5px; }
+.crow .v.good { background: color-mix(in srgb, var(--good) 13%, transparent); }
+.crow .v.warn { background: color-mix(in srgb, var(--warn) 13%, transparent); }
+.crow .v.bad { background: color-mix(in srgb, var(--bad) 11%, transparent); }
 
 .viol {
   font-size: 11px; color: var(--warn); cursor: help;
