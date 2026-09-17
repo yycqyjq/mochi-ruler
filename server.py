@@ -212,7 +212,7 @@ def _clean(o):
     return o
 
 
-def analyze(text, name=''):
+def analyze(text, name='', light=False):
     """分析一段文本，返回结构化结果。
 
     所有分数统一 0–10、越高越好（越高越不像 AI 网文）：
@@ -222,6 +222,11 @@ def analyze(text, name=''):
       metrics = 每章原始指标值（仅供对照，用于悬停提示）
       desc / rawdir = 每项的口径说明与原始值升降方向（逐项对比的 ? 气泡）
 
+    light=True 时省略**每章**的 metrics（原始值 40 键/章，前端只在全书汇总
+    层用到它；几千章的书上这部分占了响应体的一半以上）。汇总层的
+    summary.metrics 恒在。默认 light=False，regress.py 等工具拿到的输出
+    与历史完全一致。
+
     另有全书汇总 summary / bench / dimitems / label，供前端渲染对照表。
     """
     chs = q.split_chapters(text)
@@ -229,24 +234,28 @@ def analyze(text, name=''):
     if not chs:
         chs = [('（整篇）', text)]
     out = []
+    raws = []
     for title, body in chs:
         m = q.metrics(body)
+        raws.append(m)
         sc = {'real': q.score_real(m)[1], 'human': q.score_human(m)[1],
               'imm': q.score_imm(m)[1], 'rhy': q.score_rhy(m)[1],
               'syn': q.score_syn(m)[1]}
         sc['total'] = q.score_total(sc)
         comp = q.compliance(body, title)
-        out.append({
+        row = {
             'title': title or '（未命名）',
             'chars': m['chars'],
             'score': sc,
             # 直取，不兜底：缺键就该炸（启动自检二会先一步点名）。
             # 历史上这里是 `m.get(k, 0)`，会把缺键伪装成原始值 0，而 40 项里
             # 有 22 项取 0 即满分 —— 见启动自检二上方那段记录。
-            'metrics': {k: m[k] for k in SHOW},
             'items': {k: q.item_score(k, m[k]) for k in SHOW},
             'violations': [{'name': k, 'detail': v} for k, v in comp],
-        })
+        }
+        if not light:
+            row['metrics'] = {k: m[k] for k in SHOW}
+        out.append(row)
 
     # 全书汇总（中位）。展示项现在全部有阈值、逐项分不会为 None，但仍先滤掉
     # None 再取中位：万一将来出现无阈值项，也不会因 sorted([None]) 直接崩。
@@ -258,7 +267,8 @@ def analyze(text, name=''):
     summary = {'chapters': len(out), 'chars': total_chars}
     for k in DIMS + ['total']:
         summary[k] = med([c['score'][k] for c in out])
-    summary['metrics'] = {k: med([c['metrics'][k] for c in out]) for k in SHOW}
+    # 汇总层原始值从循环里的 m 取——light 模式裁掉每章 metrics 后它必须在
+    summary['metrics'] = {k: med([r[k] for r in raws]) for k in SHOW}
     summary['items'] = {k: med([c['items'][k] for c in out]) for k in SHOW}
 
     # 标杆基准。BENCHMARKS 里只存原始指标中位，**五维分在运行时用当前公式
@@ -301,6 +311,11 @@ def analyze(text, name=''):
 
 
 class H(BaseHTTPRequestHandler):
+    # keep-alive：_send 恒带准确 Content-Length，可安全复用连接。
+    # timeout 回收空闲连接占用的线程。
+    protocol_version = 'HTTP/1.1'
+    timeout = 60
+
     def log_message(self, *a):
         pass
 
@@ -338,10 +353,14 @@ class H(BaseHTTPRequestHandler):
         try:
             n = int(self.headers.get('Content-Length', 0))
         except (TypeError, ValueError):
+            # body 未读，连接不能复用，显式关闭防下一个请求错位
+            self.close_connection = True
             return self._send(400, b'bad content-length', 'text/plain')
         if n <= 0:
+            self.close_connection = True
             return self._send(400, b'empty body', 'text/plain')
         if n > MAX_BODY_BYTES:
+            self.close_connection = True
             return self._send(413, b'too large', 'text/plain')
         raw = self.rfile.read(n).decode('utf-8', 'ignore')
         try:
@@ -350,10 +369,11 @@ class H(BaseHTTPRequestHandler):
             return self._send(400, b'bad json', 'text/plain')
         text = req.get('text', '')
         name = req.get('name', '')
+        light = bool(req.get('light'))
         if not text.strip():
             return self._send(400, b'empty text', 'text/plain')
         try:
-            res = analyze(text, name)
+            res = analyze(text, name, light=light)
         except Exception as e:
             return self._send(500, json.dumps(
                 {'error': str(e)}).encode('utf-8'),
