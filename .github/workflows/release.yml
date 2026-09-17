@@ -5,6 +5,8 @@
 # 未签名发布：产物首次打开需右键 → 打开（mac）/ 过 SmartScreen（win），
 # README「桌面版」一节有说明。
 # 注：v1.0.0 等早期 tag 的树里没有本文件，推送它们不会触发任何构建，无需守卫。
+# action 版本下限（Node 20 已弃用，须跑 node24 运行时）：checkout v5+ /
+# setup-python v6+ / setup-node v5+ / upload-artifact v6+（v5 仍是 node20）。
 name: Release
 
 on:
@@ -27,9 +29,9 @@ jobs:
             py: python
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.13'
 
@@ -56,7 +58,7 @@ jobs:
           chmod +x desktop/sidecar/mochi-server 2>/dev/null || true
           ls -la desktop/sidecar/
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '20'
 
@@ -116,7 +118,7 @@ jobs:
 
       - name: 上传构建产物（手动触发）
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: mochi-desktop-${{ matrix.os }}
           path: |

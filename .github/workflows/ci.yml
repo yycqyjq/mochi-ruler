@@ -1,11 +1,13 @@
 # 墨尺 CI：无语料自测 + 编译检查（评分核心零依赖，任何环境可跑）。
 # 深度体检（分离度 / 左尾 / 泛化）需要私有标杆语料，不进 CI，见 tools/audit.py。
+# action 版本下限（Node 20 已弃用，须跑 node24 运行时）：checkout v5+ / setup-python v6+。
 name: CI
 
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:        # 手动触发：排查时空跑用（无需推 commit）
 
 jobs:
   selftest:
@@ -15,8 +17,8 @@ jobs:
       matrix:
         python-version: ["3.9", "3.13"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
       - name: 无语料自测
