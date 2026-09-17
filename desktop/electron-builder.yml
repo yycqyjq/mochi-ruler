@@ -14,11 +14,10 @@ extraResources:
   - from: sidecar
     to: sidecar
 mac:
-  # dmg 供安装，zip 供将来 electron-updater 自动更新
+  # 只出 dmg：zip/blockmap/latest*.yml 都是 electron-updater 自动更新的配套，
+  # 本应用未内置更新器，对下载者只是噪声（发布后由 workflow 清理步兜底删除）
   target:
     - target: dmg
-      arch: [arm64, x64]
-    - target: zip
       arch: [arm64, x64]
   category: public.app-category.productivity
   identity: null          # 明确跳过签名
@@ -34,6 +33,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: always
   shortcutName: 墨尺
+  differentialPackage: false  # 不生成差分更新用的 .blockmap
 
 # tag 推送后直接发布为正式 Release（默认是 draft，需手动在 Releases 页点 Publish）
 publish:

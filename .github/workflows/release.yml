@@ -1,4 +1,4 @@
-# 墨尺桌面版发布：push v* tag 自动构建 macOS（arm64 + x64 dmg/zip）
+# 墨尺桌面版发布：push v* tag 自动构建 macOS（arm64 + x64 dmg）
 # 与 Windows（x64 NSIS 安装器），挂到 GitHub Release。
 # 手动触发（Actions 页 run workflow）只构建不发布，产物挂 workflow artifacts，
 # 用于正式打 tag 前空跑验证云端构建。
@@ -95,5 +95,36 @@ jobs:
           name: mochi-desktop-${{ matrix.os }}
           path: |
             desktop/release/*.dmg
-            desktop/release/*.zip
             desktop/release/*.exe
+
+# 发布后清理（独立作业）：等双平台都构建发布完，再统一清一遍——
+# electron-builder 会顺带上传自动更新元数据（latest*.yml / *.blockmap / *.zip），
+# 本应用未内置 electron-updater，这些对下载者只是噪声：删掉，只留 dmg / exe；
+# 顺带把草稿转正式（正常已是正式，兜底）。
+  cleanup:
+    name: 清理冗余资产并转正式
+    needs: build
+    # 构建失败也跑（另一平台可能已发布成功）；整体取消则跳过
+    if: ${{ !cancelled() && github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: 删除自动更新元数据并转正式发布
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # 按 tag 从 releases 列表定位（草稿状态下 releases/tags/ 会 404）
+          rid=$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            --jq "first(.[] | select(.tag_name == \"${GITHUB_REF_NAME}\") | .id)")
+          if [ "$rid" = "null" ] || [ -z "$rid" ]; then
+            echo "未找到 ${GITHUB_REF_NAME} 的 Release，跳过（构建是否成功以构建作业为准）"
+            exit 0
+          fi
+          ids=$(gh api "repos/${GITHUB_REPOSITORY}/releases/${rid}/assets?per_page=100" \
+            --jq '.[] | select(.name | test("(blockmap|ya?ml|zip)$")) | .id')
+          for id in $ids; do
+            gh api -X DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${id}"
+          done
+          gh api -X PATCH "repos/${GITHUB_REPOSITORY}/releases/${rid}" -F draft=false > /dev/null
+          echo "清理完成，当前资产："
+          gh api "repos/${GITHUB_REPOSITORY}/releases/${rid}" --jq '.assets[].name'
