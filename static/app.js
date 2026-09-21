@@ -122,6 +122,42 @@ function fmt(v) {
 const esc = s => String(s).replace(/[&<>"']/g,
   c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+// ── 上次检测对比（ghost）────────────────────────────────────
+// 最近一次检测的汇总（总分 / 五维 / 40 项）存 localStorage，供下一次
+// 检测做前后对比：尺条上的灰点 = 上次位置，行内 ▲▼ = 涨跌，雷达上叠
+// 一层上次的灰色五边形。只存汇总层不存逐章，体积几 KB；隐私模式下
+// 静默放弃。
+let PREV = null;
+try { PREV = JSON.parse(localStorage.getItem('mochi-prev-run') || 'null'); } catch (e) { PREV = null; }
+function savePrev(d) {
+  try {
+    localStorage.setItem('mochi-prev-run', JSON.stringify({
+      ts: Date.now(), summary: d.summary, bench: d.bench,
+    }));
+  } catch (e) { /* ignore */ }
+}
+function prevAgo(ts) {
+  const m = Math.max(1, Math.round((Date.now() - ts) / 60000));
+  if (m < 60) return m + ' 分钟前';
+  const h = Math.round(m / 60);
+  if (h < 24) return h + ' 小时前';
+  return Math.round(h / 24) + ' 天前';
+}
+// 行内涨跌标记：▲ 绿 / ▼ 朱。所有分数 0–10、越高越好，涨就是改善。
+// ±0.05 内视为持平，不渲染（避免噪音）。
+function deltaHTML(you, prev) {
+  if (prev == null || you == null) return '';
+  const df = you - prev;
+  if (Math.abs(df) < 0.05) return '';
+  const up = df > 0;
+  return `<span class="d ${up ? 'up' : 'down'}">${up ? '▲' : '▼'}${Math.abs(df).toFixed(1)}</span>`;
+}
+function prevVal(kind, k) {
+  if (!PREV || !PREV.summary) return null;
+  if (kind === 'item') return (PREV.summary.items || {})[k] ?? null;
+  return (PREV.summary[k] ?? null);
+}
+
 // 逐项判定：所有分数 0–10、越高越好，所以只需和标杆分比高低，不需要方向。
 function itemTag(you, bench) {
   if (you === null || you === undefined ||
@@ -153,15 +189,18 @@ function renderScores(d) {
     const bmark = Math.max(0, Math.min(100, bench * 10));
     const cls = scCls(v);
     const sel = dimSel.has(k);
+    const pv = prevVal('dim', k);
+    const pgm = pv == null ? '' :
+      `<span class="gmark" style="left:${Math.max(0, Math.min(100, pv * 10))}%" title="上次 ${pv.toFixed(2)}"></span>`;
     return `<div class="sc${sel ? ' sel' : ''}" data-dim="${k}"
         title="点击只看该维度的逐项对比，再点一次取消">
       <div class="k">${d.dimlabel[k]}</div>
       <div class="v ${cls}">${v.toFixed(2)}</div>
       <div class="bar" title="你 ${v.toFixed(2)}　标杆 ${bench.toFixed(2)}">
         <i style="width:${pct}%;background:var(--${cls})"></i>
-        <span class="mark" style="left:${bmark}%"></span>
+        <span class="mark" style="left:${bmark}%"></span>${pgm}
       </div>
-      <div class="t">标杆 ${bench.toFixed(2)}</div>
+      <div class="t">标杆 ${bench.toFixed(2)}${deltaHTML(v, pv)}</div>
     </div>`;
   }).join('');
 }
@@ -255,7 +294,7 @@ function renderMetrics(d) {
     rows += `<div class="mrow dimrow">
       <div class="n"><span class="nlabel">${r.name}</span></div>
       <div class="mbarcell"></div>
-      <div class="you ${cls}">${num(r.you, 2)}</div>
+      <div class="you ${cls}">${num(r.you, 2)}${deltaHTML(r.you, prevVal('dim', r.key))}</div>
       <div class="bench">${num(r.bench, 2)}</div>
       <div class="tag">${j.tag}</div>
     </div>`;
@@ -298,10 +337,14 @@ function renderMetrics(d) {
         `<span class="mark" style="left:${Math.max(0, Math.min(10, bench)) * 10}%"></span>`;
       const dtag = (itemDim && itemDim[k])
         ? `<span class="dtag">${esc(d.dimlabel[itemDim[k]] || itemDim[k])}</span>` : '';
+      const pv = prevVal('item', k);
+      const gmark = pv == null ? '' :
+        `<span class="gmark" style="left:${Math.max(0, Math.min(10, pv)) * 10}%" title="上次 ${pv.toFixed(2)}"></span>`;
+      const dStr = deltaHTML(you, pv);
       rows += `<div class="mrow ${j.cls}">
         <div class="n"><span class="nlabel">${esc(name)}</span>${dtag}${qi}</div>
-        <div class="mbar">${fill}${mark}</div>
-        <div class="you ${cls}">${num(you)}</div>
+        <div class="mbar">${fill}${mark}${gmark}</div>
+        <div class="you ${cls}">${num(you)}${dStr}</div>
         <div class="bench">${num(bench)}</div>
         <div class="tag">${j.tag}</div>
       </div>`;
@@ -604,10 +647,16 @@ function renderRadar(d) {
   const poly = vals => vals.map((v, i) =>
     pt(i, v).map(x => x.toFixed(1)).join(',')).join(' ');
   let svg = '<svg viewBox="-16 -10 222 202" role="img" ' +
-    'aria-label="五维雷达：实线为你，朱砂虚线为标杆">';
+    `aria-label="五维雷达：实线为你，朱砂虚线为标杆${PREV ? '，灰虚线为上次检测' : ''}">`;
   for (const f of [0.25, 0.5, 0.75, 1]) {
     svg += `<polygon points="${poly(d.dims.map(() => 10 * f))}" ` +
       'style="fill:none;stroke:var(--line);stroke-width:1"/>';
+  }
+  // 环线刻度值：不标的话读者不知道每一环代表几分
+  for (const f of [0.25, 0.5, 0.75, 1]) {
+    const [, ry] = pt(0, 10 * f);
+    svg += `<text x="${(C + 5).toFixed(1)}" y="${(ry + 3).toFixed(1)}" ` +
+      `style="font:9px var(--mono);fill:var(--dim)">${(10 * f).toFixed(1)}</text>`;
   }
   for (let i = 0; i < N; i++) {
     const [x, y] = pt(i, 10);
@@ -616,8 +665,24 @@ function renderRadar(d) {
   }
   svg += `<polygon points="${poly(d.dims.map(k => d.bench[k]))}" ` +
     'style="fill:none;stroke:var(--verm);stroke-width:1.5;stroke-dasharray:4 3"/>';
+  // 上次检测的五边形（灰虚线）：改稿重测时，两层的胀缩就是修改的效果
+  if (PREV && PREV.summary) {
+    svg += `<polygon points="${poly(d.dims.map(k => PREV.summary[k] ?? 0))}" ` +
+      'style="fill:none;stroke:var(--dim);stroke-width:1;stroke-dasharray:2 3"/>';
+  }
   svg += `<polygon points="${poly(d.dims.map(k => d.summary[k]))}" ` +
     'style="fill:var(--accent-soft);stroke:var(--accent);stroke-width:2;stroke-linejoin:round"/>';
+  // 顶点圆点 + 透明命中区：点击 = 与五维卡一致的维度筛选
+  for (let i = 0; i < N; i++) {
+    const k = d.dims[i];
+    const [vx, vy] = pt(i, d.summary[k]);
+    const sel = dimSel.has(k);
+    svg += `<circle cx="${vx.toFixed(1)}" cy="${vy.toFixed(1)}" r="3.2" ` +
+      `style="fill:${sel ? 'var(--accent)' : 'var(--card)'};stroke:var(--accent);stroke-width:1.2"/>`;
+    svg += `<circle cx="${vx.toFixed(1)}" cy="${vy.toFixed(1)}" r="11" fill="transparent" ` +
+      `class="rvhit" data-dim="${k}" style="cursor:pointer">` +
+      `<title>${d.dimlabel[k]}：你 ${d.summary[k].toFixed(2)} · 标杆 ${d.bench[k].toFixed(2)} · 点击只看该维度</title></circle>`;
+  }
   for (let i = 0; i < N; i++) {
     const [x, y] = pt(i, 10);
     const lx = C + (x - C) * 1.17, ly = C + (y - C) * 1.17;
@@ -737,6 +802,11 @@ function render(d) {
   const tcls = scCls(tv), tj = itemTag(tv, tb);
   const tpct = Math.max(0, Math.min(100, tv * 10));
   const tbmark = Math.max(0, Math.min(100, tb * 10));
+  const pv = PREV && PREV.summary ? PREV.summary.total : null;
+  const pMark = pv == null ? '' :
+    `<span class="tc-ghost" style="left:${Math.max(0, Math.min(100, pv * 10))}%" title="上次 ${pv.toFixed(2)}"></span>`;
+  const prevFoot = pv == null ? '' :
+    `　·　上次 ${pv.toFixed(2)}（${prevAgo(PREV.ts)}）${deltaHTML(tv, pv)}`;
   $('#totalcard').innerHTML = `
     <div class="tc-head">
       <span class="tc-label">总分</span>
@@ -748,9 +818,10 @@ function render(d) {
         <div class="tc-bar" title="你 ${tv.toFixed(2)}　标杆 ${tb.toFixed(2)}">
           <i style="width:${tpct}%;background:var(--${tcls})"></i>
           <span class="tc-mark" style="left:${tbmark}%"></span>
+          ${pMark}
         </div>
         <div class="tc-foot">
-          <span>标杆 ${tb.toFixed(2)}　·　竖线为基准位置</span>
+          <span>标杆 ${tb.toFixed(2)}　·　竖线为基准位置${prevFoot}</span>
           <span class="tc-tag ${tj.cls}">${tj.tag}</span>
         </div>
       </div>
@@ -803,6 +874,13 @@ async function run() {
     chOnlyViol = false;
     chSort = 'orig';
     render(d);
+    // 本轮渲染用的是上一次的 PREV；渲染完把本轮存起来，供下一次对比
+    PREV = { ts: Date.now(), summary: d.summary, bench: d.bench };
+    savePrev(d);
+    // 窄屏单列布局：结果在输入框下方，完成后自动滚过去，别让用户找
+    if (window.innerWidth <= 960) {
+      $('#result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
     const s = d.summary;
     const sourceNote = loadedFolder
       ? `\n来源：${loadedMeta && loadedMeta.kind === 'file' ? '📄' : '📁'} ${loadedFolder}`
@@ -1050,6 +1128,14 @@ document.addEventListener('DOMContentLoaded', () => {
     if (dimSel.has(k)) dimSel.delete(k); else dimSel.add(k);
     renderScores(LAST);
     renderMetrics(LAST);
+  });
+  // 雷达顶点：与五维卡同款的维度筛选（点击切换选中维度）
+  $('#radar').addEventListener('click', e => {
+    const el = e.target.closest('.rvhit[data-dim]');
+    if (!el || !LAST) return;
+    const k = el.dataset.dim;
+    if (dimSel.has(k)) dimSel.delete(k); else dimSel.add(k);
+    renderScores(LAST); renderMetrics(LAST); renderRadar(LAST);
   });
   // 「按维度 / 按差距」排序切换：渲染与复制共用 buildTableRows，同步生效。
   $('#sortseg').addEventListener('click', e => {

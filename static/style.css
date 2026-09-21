@@ -757,3 +757,17 @@ footer i { font-style: normal; opacity: .45; }
   #chapters { overflow-x: auto; -webkit-overflow-scrolling: touch; }
   #chapters .crow, #chapters .viol, #chapters .chdetail { min-width: 560px; }
 }
+
+/* ── 上次检测对比（ghost）────────────────────────────────── */
+.tc-ghost, .gmark {
+  position: absolute; width: 0; height: 12px;
+  border-left: 2px dotted var(--dim);
+  transform: translateX(-1px); pointer-events: none;
+}
+.tc-ghost { top: -4px; height: 15px; }
+.gmark { top: -2px; }
+.you .d, .tc-foot .d { font-family: var(--mono); font-size: 10px; margin-left: 4px; }
+.you .d.up, .tc-foot .d.up { color: var(--good); }
+.you .d.down, .tc-foot .d.down { color: var(--bad); }
+#radar .rvhit { cursor: pointer; }
+#radar .rvhit:hover { fill: var(--accent-soft); }
