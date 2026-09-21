@@ -1,7 +1,7 @@
 {
   "name": "mochi-ruler",
   "productName": "墨尺",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "墨尺 · 网文质检 —— 桌面版（零依赖 Python 评分核心的 Electron 壳）",
   "author": "yycqyjq",
   "license": "MIT",
