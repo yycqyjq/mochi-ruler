@@ -603,7 +603,7 @@ function renderRadar(d) {
   };
   const poly = vals => vals.map((v, i) =>
     pt(i, v).map(x => x.toFixed(1)).join(',')).join(' ');
-  let svg = '<svg viewBox="0 0 190 190" role="img" ' +
+  let svg = '<svg viewBox="-16 -10 222 202" role="img" ' +
     'aria-label="五维雷达：实线为你，朱砂虚线为标杆">';
   for (const f of [0.25, 0.5, 0.75, 1]) {
     svg += `<polygon points="${poly(d.dims.map(() => 10 * f))}" ` +
@@ -628,6 +628,96 @@ function renderRadar(d) {
   }
   svg += '</svg>';
   $('#radar').innerHTML = svg;
+}
+
+// 逐章趋势带：总分折线 + 朱砂标杆虚线。回答「从第几章开始掉」——
+// 数字表看不出趋势。y 轴数据驱动（分数集中在 3–9 时，固定 0–10 会把
+// 变化压扁）；章数超过 1200 按窗口聚合，SVG 点数可控。
+// preserveAspectRatio=none 让折线铺满容器宽度，线宽用 vector-effect
+// 锁定不随拉伸变形；hover / click 定位到对应章行。
+function renderTrend(d) {
+  const el = $('#trend');
+  const list = d.chapters;                    // 原文顺序 = 叙事时间轴
+  if (list.length < 3) { el.hidden = true; el.innerHTML = ''; return; }
+  el.hidden = false;
+  const totals = list.map(c => c.score.total);
+  const STEP = Math.max(1, Math.ceil(list.length / 1200));
+  const pts = [];
+  for (let i = 0; i < list.length; i += STEP) {
+    const seg = totals.slice(i, i + STEP);
+    pts.push({ i, v: seg.reduce((a, b) => a + b, 0) / seg.length });
+  }
+  const lo = Math.max(0, Math.floor(Math.min(...totals) - 0.6));
+  const hi = Math.min(10, Math.ceil(Math.max(...totals) + 0.6));
+  const bench = d.bench.total;
+  const W = 1000, H = 150, PL = 6, PR = 6, PT = 12, PB = 6;
+  const X = k => PL + (W - PL - PR) * (pts.length === 1 ? 0.5 : k / (pts.length - 1));
+  const Y = v => PT + (H - PT - PB) * (1 - (Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo || 1));
+  let svg = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" ` +
+    `aria-label="逐章总分趋势：实线为各章总分，虚线为标杆 ${bench.toFixed(2)}">`;
+  for (let g = lo + 1; g < hi; g++) {
+    svg += `<line x1="${PL}" y1="${Y(g).toFixed(1)}" x2="${W - PR}" y2="${Y(g).toFixed(1)}" ` +
+      `style="stroke:var(--line);stroke-width:1" vector-effect="non-scaling-stroke"/>`;
+  }
+  if (bench >= lo && bench <= hi) {
+    svg += `<line x1="${PL}" y1="${Y(bench).toFixed(1)}" x2="${W - PR}" y2="${Y(bench).toFixed(1)}" ` +
+      `style="stroke:var(--verm);stroke-width:1.5;stroke-dasharray:6 4" vector-effect="non-scaling-stroke"/>`;
+  }
+  svg += `<polyline points="${pts.map((p, k) =>
+    `${X(k).toFixed(1)},${Y(p.v).toFixed(1)}`).join(' ')}" fill="none" ` +
+    `style="stroke:var(--accent);stroke-width:2" vector-effect="non-scaling-stroke"/>`;
+  svg += '</svg>';
+  // 最低章标记（写作者最关心「最差的那章」）
+  let minK = 0;
+  pts.forEach((p, k) => { if (p.v < pts[minK].v) minK = k; });
+  const minPctX = (X(minK) / W * 100).toFixed(2), minPctY = (Y(pts[minK].v) / H * 100).toFixed(2);
+  el.innerHTML =
+    `<div class="trend-legend"><span>总分（逐章，纵轴 ${lo}–${hi} 分）</span>` +
+    `<span class="tl-bench">┄ 标杆 ${bench.toFixed(2)}</span>` +
+    `<span>朱砂圆点 = 最低章 · 点击折线定位到章行</span></div>` +
+    `<div class="trend-plot">${svg}` +
+    `<div class="trend-min" style="left:${minPctX}%;top:${minPctY}%"></div>` +
+    `<div class="trend-cross" hidden></div><div class="trend-tip" hidden></div></div>`;
+  const plot = el.querySelector('.trend-plot');
+  const cross = el.querySelector('.trend-cross');
+  const tip = el.querySelector('.trend-tip');
+  const nearest = ev => {
+    const rect = plot.getBoundingClientRect();
+    const vx = (ev.clientX - rect.left) / rect.width * W;
+    let bi = 0, bd = Infinity;
+    pts.forEach((p, k) => { const dd = Math.abs(X(k) - vx); if (dd < bd) { bd = dd; bi = k; } });
+    return bi;
+  };
+  const move = ev => {
+    const bi = nearest(ev), p = pts[bi];
+    const pctX = (X(bi) / W * 100).toFixed(2);
+    cross.style.left = pctX + '%'; cross.hidden = false;
+    tip.style.left = pctX + '%';
+    const py = Y(p.v) / H * 100;
+    tip.style.top = py < 30 ? `calc(${py.toFixed(2)}% + 14px)` : `calc(${py.toFixed(2)}% - 30px)`;
+    tip.textContent = `第 ${p.i + 1} 章 · ${p.v.toFixed(2)}`;
+    tip.hidden = false;
+  };
+  const leave = () => { cross.hidden = true; tip.hidden = true; };
+  const locate = ev => {
+    const ci = pts[nearest(ev)].i;
+    chSort = 'orig'; chOnlyViol = false;
+    if (list.length > CHAPTER_LIMIT) showAllChapters = true;   // 定位需要该章在渲染窗口内
+    renderChapters(d);
+    let row = document.querySelector(`#chapters .crow[data-i="${ci}"]`);
+    if (!row) return;
+    if (!expandedCh.has(ci)) { expandedCh.add(ci); renderChapters(d); }
+    row = document.querySelector(`#chapters .crow[data-i="${ci}"]`);
+    if (row) {
+      row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash');
+    }
+  };
+  plot.addEventListener('mousemove', move);
+  plot.addEventListener('mouseleave', leave);
+  plot.addEventListener('touchmove', ev => { move(ev.touches[0]); }, { passive: true });
+  plot.addEventListener('touchend', leave);
+  plot.addEventListener('click', locate);
 }
 
 function render(d) {
@@ -667,6 +757,7 @@ function render(d) {
     </div>`;
 
   renderFixbar(d);
+  renderTrend(d);
   renderRadar(d);
   renderScores(d);
   renderMetrics(d);

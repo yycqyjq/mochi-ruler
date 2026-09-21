@@ -20,9 +20,9 @@
   --accent: #33608c;
   --accent-soft: rgba(51, 96, 140, .09);
   --verm: #b5402f;
-  --good: #2e7d4f;
-  --warn: #a8721f;
-  --bad: #b5402f;
+  --good: #27704a;
+  --warn: #855914;
+  --bad: #a63b2a;
   --ink-btn: #2b261b;
   --ink-btn-fg: #f6f2e7;
   --shadow: 0 12px 32px rgba(56, 47, 26, .12);
@@ -704,4 +704,56 @@ footer i { font-style: normal; opacity: .45; }
 @media (max-width: 640px) {
   .mrow { grid-template-columns: minmax(0, 1fr) 62px 60px 54px; }
   .mbar, .mbarcell { display: none; }
+}
+
+/* ── 逐章趋势带 ─────────────────────────────────────────────
+   总分折线 + 朱砂标杆虚线。y 轴数据驱动（分数集中在 3–9 时，固定
+   0–10 会把变化压扁）；preserveAspectRatio=none 让折线铺满容器，
+   线宽用 vector-effect 锁定不随拉伸变形。hover / click 定位到章行。 */
+.trendband {
+  position: relative;
+  border: 1px solid var(--line); border-radius: 10px;
+  background: var(--card); padding: 10px 12px 8px; margin: 0 0 14px;
+}
+.trendband[hidden] { display: none; }
+.trend-legend {
+  display: flex; flex-wrap: wrap; gap: 6px 16px;
+  font-family: var(--mono); font-size: 11px; color: var(--dim);
+  margin: 0 0 6px;
+}
+.trend-legend .tl-bench { color: var(--verm); }
+.trend-plot { position: relative; }
+.trend-plot svg { width: 100%; height: 150px; display: block; }
+.trend-cross {
+  position: absolute; top: 0; bottom: 0; width: 1px;
+  background: var(--rule-strong); pointer-events: none; display: none;
+}
+.trend-tip {
+  position: absolute; transform: translateX(-50%);
+  font-family: var(--mono); font-size: 11px; white-space: nowrap;
+  background: var(--ink-btn); color: var(--ink-btn-fg);
+  padding: 2px 7px; border-radius: 4px; pointer-events: none; display: none;
+  z-index: 3;
+}
+.trend-min {
+  position: absolute; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--verm); transform: translate(-50%, -50%);
+  border: 1.5px solid var(--card); pointer-events: none;
+}
+
+/* ── 触控目标：视觉不变，扩大命中区 ─────────────────────────── */
+#theme, #source-remove { position: relative; }
+#theme::after, #source-remove::after {
+  content: ""; position: absolute; inset: -6px;
+}
+.qi { position: relative; }
+.qi::after { content: ""; position: absolute; inset: -14px; }
+
+@media (max-width: 640px) {
+  /* 逐章表固定列在窄屏撑破页面：改为表内横向滚动。注意 grid item 的
+     min-width 默认是 auto，会被内容最小宽度撑开——必须显式归零，
+     否则 overflow-x:auto 的容器自己也会被撑出去。 */
+  main > .panel { min-width: 0; }
+  #chapters { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  #chapters .crow, #chapters .viol, #chapters .chdetail { min-width: 560px; }
 }
