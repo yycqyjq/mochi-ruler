@@ -22,7 +22,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 STATIC = os.path.join(ROOT, 'static')
-VERSION = '1.0.0'
+VERSION = '1.1.3'
 try:
     PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
 except ValueError:
