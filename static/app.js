@@ -1199,8 +1199,15 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!el || !LAST) return;
     const k = el.dataset.dim;
     if (dimSel.has(k)) dimSel.delete(k); else dimSel.add(k);
+    // ⚠ 重新渲染会替换掉整个 #scores，焦点随之丢失——键盘用户按一次 Enter
+    // 就得重新 Tab 一遍。原来有焦点的话，按维度名找回新元素把焦点还回去。
+    const hadFocus = document.activeElement === el;
     renderScores(LAST);
     renderMetrics(LAST);
+    if (hadFocus) {
+      const again = document.querySelector(`.sc[data-dim="${k}"]`);
+      if (again) again.focus();
+    }
   });
   // 雷达顶点：与五维卡同款的维度筛选（点击切换选中维度）
   $('#radar').addEventListener('click', e => {
@@ -1208,7 +1215,12 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!el || !LAST) return;
     const k = el.dataset.dim;
     if (dimSel.has(k)) dimSel.delete(k); else dimSel.add(k);
+    const hadFocus = document.activeElement === el;
     renderScores(LAST); renderMetrics(LAST); renderRadar(LAST);
+    if (hadFocus) {
+      const again = document.querySelector(`.rvhit[data-dim="${k}"]`);
+      if (again) again.focus();
+    }
   });
   // 「按维度 / 按差距」排序切换：渲染与复制共用 buildTableRows，同步生效。
   $('#sortseg').addEventListener('click', e => {
@@ -1277,10 +1289,14 @@ document.addEventListener('DOMContentLoaded', () => {
       afterViol.remove();
       expandedCh.delete(i);
       crow.querySelector('.twist').textContent = '▸';
+      // ⚠ 这条路径是**直接改 DOM**（不重新渲染），所以 aria-expanded 必须手动同步，
+      // 否则读屏会一直播报「已展开」而实际已收起。
+      crow.setAttribute('aria-expanded', 'false');
     } else {
       crow.insertAdjacentHTML('afterend', chapterDetailHTML(LAST, LAST.chapters[i]));
       expandedCh.add(i);
       crow.querySelector('.twist').textContent = '▾';
+      crow.setAttribute('aria-expanded', 'true');
     }
   });
   // 气泡触发：鼠标走悬停、键盘走聚焦、触屏走点按，按指针类型分流。
