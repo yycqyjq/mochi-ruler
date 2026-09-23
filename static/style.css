@@ -724,17 +724,23 @@ footer i { font-style: normal; opacity: .45; }
 .trend-legend .tl-bench { color: var(--verm); }
 .trend-plot { position: relative; }
 .trend-plot svg { width: 100%; height: 150px; display: block; }
+/* ⚠ display:none 必须挂在 [hidden] 上，不能写进基础规则：JS 靠 hidden 属性切换
+   显隐（app.js 里 cross.hidden = false），而作者样式的优先级高于 UA 的
+   [hidden]{display:none} —— 写进基础规则会让十字线与提示框**永远显示不出来**。
+   （同文件 .trendband[hidden] 用的是同一套写法，照它对齐即可。） */
 .trend-cross {
   position: absolute; top: 0; bottom: 0; width: 1px;
-  background: var(--rule-strong); pointer-events: none; display: none;
+  background: var(--line-strong); pointer-events: none;
 }
+.trend-cross[hidden] { display: none; }
 .trend-tip {
   position: absolute; transform: translateX(-50%);
   font-family: var(--mono); font-size: 11px; white-space: nowrap;
   background: var(--ink-btn); color: var(--ink-btn-fg);
-  padding: 2px 7px; border-radius: 4px; pointer-events: none; display: none;
+  padding: 2px 7px; border-radius: 4px; pointer-events: none;
   z-index: 3;
 }
+.trend-tip[hidden] { display: none; }
 .trend-min {
   position: absolute; width: 9px; height: 9px; border-radius: 50%;
   background: var(--verm); transform: translate(-50%, -50%);

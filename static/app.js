@@ -372,7 +372,9 @@ function renderMetrics(d) {
     for (const k of g.items) {
       const dimName = itemDim && itemDim[k]
         ? '·' + (d.dimlabel[itemDim[k]] || itemDim[k]) : '';
-      lines.push([(d.label && d.label[k]) || k + dimName,
+      // ⚠ 括号不能省：`+` 优先级高于 `||`，写成 `A || k + dimName` 会被解析成
+      // `A || (k + dimName)`——有中文名时 dimName 被丢掉，复制出去的表缺维度后缀。
+      lines.push([((d.label && d.label[k]) || k) + dimName,
         num(s.items[k]), num(d.bench.items[k]),
         itemTag(s.items[k], d.bench.items[k]).tag].join('\t'));
     }
@@ -580,7 +582,10 @@ function chapterDetailHTML(d, c) {
 // 逐章列表的数据源：应用当前排序与违规过滤。渲染与「复制逐章」共用，
 // 保证屏幕上看到的和复制出去的永远一致。
 function chapterList(d) {
-  const list = d.chapters.map((c, i) => ({ c, i }));
+  // ⚠ 必须是 let：下面按「只看违规」会重新赋值（filter 返回新数组）。
+  // 写成 const 会在 chOnlyViol=true 时抛 TypeError: Assignment to constant variable
+  // ——「只看有违规」按钮、fixbar 违规芯片、「复制逐章」都会崩。
+  let list = d.chapters.map((c, i) => ({ c, i }));
   if (chOnlyViol) list = list.filter(x => x.c.violations && x.c.violations.length);
   if (chSort === 'low') list.sort((a, b) => a.c.score.total - b.c.score.total);
   return list;
@@ -1278,17 +1283,23 @@ document.addEventListener('DOMContentLoaded', () => {
     $('#result').hidden = true; $('#empty').hidden = false;
     $('#hint').textContent = '';
   };
+  // ⚠ 两处都：先把 FileList 展开成数组（同步复制），再清空 input.value——
+  // 否则选同一个文件/文件夹第二次不触发 onchange（value 没变，浏览器认为无变化）。
+  // 顺序不能反：直接清 value 会同时清空 FileList，异步的 FileReader 就拿不到文件了。
   $('#file').onchange = e => {
-    if (e.target.files.length) {
-      const name = e.target.files.length === 1
-        ? e.target.files[0].name : `${e.target.files.length} 个文件`;
-      loadFiles(e.target.files, name, 'file');
+    const fs = [...e.target.files];
+    e.target.value = '';
+    if (fs.length) {
+      const name = fs.length === 1 ? fs[0].name : `${fs.length} 个文件`;
+      loadFiles(fs, name, 'file');
     }
   };
   $('#dir').onchange = e => {
-    if (e.target.files.length) {
-      const p = e.target.files[0].webkitRelativePath || '';
-      loadFiles(e.target.files, p.split('/')[0] || '文件夹');
+    const fs = [...e.target.files];
+    e.target.value = '';
+    if (fs.length) {
+      const p = fs[0].webkitRelativePath || '';
+      loadFiles(fs, p.split('/')[0] || '文件夹');
     }
   };
   bindDrop($('#text'));
