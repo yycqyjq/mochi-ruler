@@ -49,6 +49,22 @@ class SplitChapters(unittest.TestCase):
             self._titles(f"# 第一章 入夜\n\n{B}\n\n# 第二章 敲门\n\n{B}"),
             ["# 第一章 入夜", "# 第二章 敲门"])
 
+    def test_markdown_multi_level(self):
+        # 「# 卷名 / ## 第N章」两级 Markdown 结构（2026-09-23 修复）。
+        # 原实现只认单个 `#`，会把整篇并成 1 章——实测某标准 AI 目录
+        # 45/46 个文件受影响（该目录 53 章 → 523 章）。拆章错 = 测量单位错。
+        self.assertEqual(
+            self._titles(f"# 第一卷 卷名\n\n## 第1章 入夜\n\n{B}"
+                         f"\n\n## 第2章 敲门\n\n{B}"),
+            ["## 第1章 入夜", "## 第2章 敲门"])
+        # 二～六级都认；「## 楔子」这类特殊章节同样生效
+        self.assertEqual(
+            self._titles(f"###### 第1章 入夜\n\n{B}\n\n###### 第2章 敲门\n\n{B}"),
+            ["###### 第1章 入夜", "###### 第2章 敲门"])
+        self.assertEqual(
+            self._titles(f"# 书名\n\n## 楔子\n\n{B}\n\n## 第1章 入夜\n\n{B}"),
+            ["## 楔子", "## 第1章 入夜"])
+
     def test_zh_numbered(self):
         self.assertEqual(
             self._titles(f"第一章 入夜\n\n{B}\n\n第二章 敲门\n\n{B}"),
