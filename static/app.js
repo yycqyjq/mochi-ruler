@@ -192,7 +192,10 @@ function renderScores(d) {
     const pv = prevVal('dim', k);
     const pgm = pv == null ? '' :
       `<span class="gmark" style="left:${Math.max(0, Math.min(100, pv * 10))}%" title="上次 ${pv.toFixed(2)}"></span>`;
+    // role/tabindex/aria-pressed：让维度筛选能被 Tab 到、能用 Enter/Space 触发，
+    // 读屏也能播报选中态（键盘激活由全局 keydown 委托统一处理）。
     return `<div class="sc${sel ? ' sel' : ''}" data-dim="${k}"
+        role="button" tabindex="0" aria-pressed="${sel}"
         title="点击只看该维度的逐项对比，再点一次取消">
       <div class="k">${d.dimlabel[k]}</div>
       <div class="v ${cls}">${v.toFixed(2)}</div>
@@ -610,7 +613,9 @@ function renderChapters(d) {
     '<div class="v">总分</div></div>';
   for (const { c, i } of shown) {
     const t = esc(c.title);
-    ch += `<div class="crow" data-i="${i}">
+    // role/tabindex/aria-expanded：章行可 Tab 到、回车展开明细，读屏能播报展开态
+    ch += `<div class="crow" data-i="${i}" role="button" tabindex="0"
+      aria-expanded="${expandedCh.has(i)}">
       <div class="t"><span class="twist">${expandedCh.has(i) ? '▾' : '▸'}</span>${t}</div>
       <div class="v">${c.chars}</div>
       <div class="v ${scCls(c.score.real)}">${c.score.real.toFixed(1)}</div>
@@ -632,7 +637,7 @@ function renderChapters(d) {
     if (expandedCh.has(i)) ch += chapterDetailHTML(d, c);
   }
   if (truncated) {
-    ch += `<div class="crow showall">显示全部 ${list.length} 章（当前只列前 ${CHAPTER_LIMIT}；可改按「总分最低」排序让问题章排前）</div>`;
+    ch += `<div class="crow showall" role="button" tabindex="0">显示全部 ${list.length} 章（当前只列前 ${CHAPTER_LIMIT}；可改按「总分最低」排序让问题章排前）</div>`;
   }
   if (!shown.length) {
     ch = '<div class="chempty">没有符合条件的章。</div>';
@@ -651,8 +656,10 @@ function renderRadar(d) {
   };
   const poly = vals => vals.map((v, i) =>
     pt(i, v).map(x => x.toFixed(1)).join(',')).join(' ');
-  let svg = '<svg viewBox="-16 -10 222 202" role="img" ' +
-    `aria-label="五维雷达：实线为你，朱砂虚线为标杆${PREV ? '，灰虚线为上次检测' : ''}">`;
+  // ⚠ 用 role="group" 而非 "img"：img 是叶子节点，会把里面的可聚焦顶点
+  //（.rvhit，每个都是一次维度筛选）整个从无障碍树里抹掉。
+  let svg = '<svg viewBox="-16 -10 222 202" role="group" ' +
+    `aria-label="五维雷达：实线为你，朱砂虚线为标杆${PREV ? '，灰虚线为上次检测' : ''}。五个顶点可聚焦，回车只看该维度">`;
   for (const f of [0.25, 0.5, 0.75, 1]) {
     svg += `<polygon points="${poly(d.dims.map(() => 10 * f))}" ` +
       'style="fill:none;stroke:var(--line);stroke-width:1"/>';
@@ -684,8 +691,12 @@ function renderRadar(d) {
     const sel = dimSel.has(k);
     svg += `<circle cx="${vx.toFixed(1)}" cy="${vy.toFixed(1)}" r="3.2" ` +
       `style="fill:${sel ? 'var(--accent)' : 'var(--card)'};stroke:var(--accent);stroke-width:1.2"/>`;
+    // tabindex/role/aria-label：SVG 元素也能聚焦。但**键盘主入口是五维卡**
+    //（功能完全相同、语义更标准），这里只是让不用鼠标的人也能操作雷达。
     svg += `<circle cx="${vx.toFixed(1)}" cy="${vy.toFixed(1)}" r="11" fill="transparent" ` +
-      `class="rvhit" data-dim="${k}" style="cursor:pointer">` +
+      `class="rvhit" data-dim="${k}" role="button" tabindex="0" ` +
+      `aria-label="${d.dimlabel[k]}：你 ${d.summary[k].toFixed(2)}，标杆 ${d.bench[k].toFixed(2)}，回车只看该维度" ` +
+      `style="cursor:pointer">` +
       `<title>${d.dimlabel[k]}：你 ${d.summary[k].toFixed(2)} · 标杆 ${d.bench[k].toFixed(2)} · 点击只看该维度</title></circle>`;
   }
   for (let i = 0; i < N; i++) {
@@ -751,15 +762,36 @@ function renderTrend(d) {
   const plot = el.querySelector('.trend-plot');
   const cross = el.querySelector('.trend-cross');
   const tip = el.querySelector('.trend-tip');
-  const nearest = ev => {
-    const rect = plot.getBoundingClientRect();
-    const vx = (ev.clientX - rect.left) / rect.width * W;
-    let bi = 0, bd = Infinity;
-    pts.forEach((p, k) => { const dd = Math.abs(X(k) - vx); if (dd < bd) { bd = dd; bi = k; } });
-    return bi;
+  // ⚠ 缓存 rect：getBoundingClientRect 会强制重排，原来每次 mousemove 都调一次
+  // （趋势带最多 1200 点，鼠标一动 = 一次重排 + 一次 O(n) 扫描）。
+  // 200ms 内复用，滚动/缩放后最多滞后 200ms —— 视觉上无感，但省掉绝大部分重排。
+  let rectCache = null, rectAt = 0;
+  const plotRect = () => {
+    const now = performance.now();
+    if (!rectCache || now - rectAt > 200) {
+      rectCache = plot.getBoundingClientRect();
+      rectAt = now;
+    }
+    return rectCache;
   };
-  const move = ev => {
-    const bi = nearest(ev), p = pts[bi];
+  // ⚠ X(k) 是 k 的线性函数（见上方定义），故 X 随 k 单调递增 → 二分查找。
+  // 原来是对全部点做 forEach 线性扫描，1200 点时每次移动要算 1200 次。
+  const nearest = clientX => {
+    const rect = plotRect();
+    const vx = (clientX - rect.left) / rect.width * W;
+    let a = 0, b = pts.length - 1;
+    while (b - a > 1) {
+      const mid = (a + b) >> 1;
+      if (X(mid) < vx) a = mid; else b = mid;
+    }
+    return Math.abs(X(a) - vx) <= Math.abs(X(b) - vx) ? a : b;
+  };
+  // ⚠ rAF 节流：mousemove 触发频率远高于渲染帧率，不节流会做大量无用计算。
+  let pendingX = null, rafId = 0;
+  const drawAt = () => {
+    rafId = 0;
+    if (pendingX === null) return;
+    const bi = nearest(pendingX), p = pts[bi];
     const pctX = (X(bi) / W * 100).toFixed(2);
     cross.style.left = pctX + '%'; cross.hidden = false;
     tip.style.left = pctX + '%';
@@ -768,9 +800,17 @@ function renderTrend(d) {
     tip.textContent = `第 ${p.i + 1} 章 · ${p.v.toFixed(2)}`;
     tip.hidden = false;
   };
-  const leave = () => { cross.hidden = true; tip.hidden = true; };
+  const move = ev => {
+    pendingX = ev.clientX;
+    if (!rafId) rafId = requestAnimationFrame(drawAt);
+  };
+  const leave = () => {
+    pendingX = null;
+    if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+    cross.hidden = true; tip.hidden = true;
+  };
   const locate = ev => {
-    const ci = pts[nearest(ev)].i;
+    const ci = pts[nearest(ev.clientX)].i;
     chSort = 'orig'; chOnlyViol = false;
     if (list.length > CHAPTER_LIMIT) showAllChapters = true;   // 定位需要该章在渲染窗口内
     renderChapters(d);
@@ -869,7 +909,17 @@ async function run() {
       body: JSON.stringify({ text, light: true }),
       signal: ctrl.signal
     });
-    if (!r.ok) throw new Error('检测失败：' + r.status);
+    // ⚠ 非 2xx 也要先把 body 读出来：server 把真实原因放在 {"error": "..."} 里
+    //（如「内容太短」「章节数超限」）。直接抛 status 会让用户只看到「500」，
+    // 真正的原因被吞掉。
+    if (!r.ok) {
+      let detail = '';
+      try {
+        const e = await r.json();
+        if (e && e.error) detail = `：${e.error}`;
+      } catch (_) { /* body 不是 JSON 就算了，别让解析失败盖住原始错误 */ }
+      throw new Error(`检测失败（HTTP ${r.status}）${detail}`);
+    }
     const d = await r.json();
     if (d.error) throw new Error(d.error);
     LAST = d;
@@ -948,46 +998,64 @@ function loadFiles(fs, sourceName = '', sourceKind = 'folder') {
   }
   list.sort((a, b) => (a.webkitRelativePath || a.name)
     .localeCompare(b.webkitRelativePath || b.name, 'zh'));
-  let done = 0, buf = [], encs = [];
+  let done = 0, buf = [], encs = [], failed = [];
+  // 全部读完后的统一收尾。抽成函数是为了让 onload / onerror **共用同一个计数
+  // 出口**——否则任一文件读失败时 done 永远到不了 list.length，聚合回调不触发，
+  // UI 会一直卡在「读取中…」且没有任何提示。
+  const finish = () => {
+    const joined = buf.join('\n\n');
+    // 非 UTF-8 文件必须点名，否则「转码成功」对用户不可见
+    const encSet = [...new Set(encs.filter(e => e && e !== 'UTF-8'))];
+    const encNote = encSet.length
+      ? `${encs.filter(e => e && e !== 'UTF-8').length} 个文件按 ${encSet.join('、')} 解码`
+      : '';
+    if (sourceName) {
+      loadedText = joined;
+      loadedFolder = sourceName;
+      showSource({
+        name: sourceName,
+        kind: sourceKind,
+        files: list.length,
+        skipped,
+        encNote,
+        formats: [...new Set(list.map(x => (x.name.match(/\.[^.]+$/) || [''])[0].toLowerCase()))].join('、') || '无',
+        chars: joined.replace(/\s/g, '').length
+      });
+      // 不清空输入框：run() 会把来源与手动内容合并检测，
+      // 与「移除来源时保留手动内容」保持同一设计。
+    } else {
+      loadedText = null;
+      loadedFolder = '';
+      loadedMeta = null;
+      $('#sourcebar').hidden = true;
+      $('#text').value = joined;
+    }
+    $('#hint').textContent = sourceName
+      ? `已载入 ${list.length} 个文件${encNote ? '，' + encNote : ''}；章节以检测结果为准，输入框内容会一起检测`
+      : `已载入 ${list.length} 个文件${encNote ? '，' + encNote : ''}` +
+      (skipped ? `（跳过 ${skipped} 个非文本文件）` : '');
+    if (failed.length) {
+      popup('部分文件读取失败',
+        `有 ${failed.length} 个文件没能读出来，已跳过：\n\n` +
+        failed.slice(0, 8).join('\n') +
+        (failed.length > 8 ? `\n…另有 ${failed.length - 8} 个` : ''),
+        'error');
+    }
+  };
   list.forEach((f, i) => {
     const rd = new FileReader();
+    const settle = () => { if (++done === list.length) finish(); };
     rd.onload = () => {
       const d = decodeFile(rd.result);
       buf[i] = d.text;
       encs[i] = d.enc;
-      if (++done === list.length) {
-        const joined = buf.join('\n\n');
-        // 非 UTF-8 文件必须点名，否则「转码成功」对用户不可见
-        const encSet = [...new Set(encs.filter(e => e !== 'UTF-8'))];
-        const encNote = encSet.length
-          ? `${encs.filter(e => e !== 'UTF-8').length} 个文件按 ${encSet.join('、')} 解码`
-          : '';
-        if (sourceName) {
-          loadedText = joined;
-          loadedFolder = sourceName;
-          showSource({
-            name: sourceName,
-            kind: sourceKind,
-            files: list.length,
-            skipped,
-            encNote,
-            formats: [...new Set(list.map(x => (x.name.match(/\.[^.]+$/) || [''])[0].toLowerCase()))].join('、') || '无',
-            chars: joined.replace(/\s/g, '').length
-          });
-          // 不清空输入框：run() 会把来源与手动内容合并检测，
-          // 与「移除来源时保留手动内容」保持同一设计。
-        } else {
-          loadedText = null;
-          loadedFolder = '';
-          loadedMeta = null;
-          $('#sourcebar').hidden = true;
-          $('#text').value = joined;
-        }
-        $('#hint').textContent = sourceName
-          ? `已载入 ${list.length} 个文件${encNote ? '，' + encNote : ''}；章节以检测结果为准，输入框内容会一起检测`
-          : `已载入 ${list.length} 个文件${encNote ? '，' + encNote : ''}` +
-          (skipped ? `（跳过 ${skipped} 个非文本文件）` : '');
-      }
+      settle();
+    };
+    rd.onerror = () => {
+      failed.push(f.name);
+      buf[i] = '';
+      encs[i] = '';
+      settle();
     };
     rd.readAsArrayBuffer(f);
   });
@@ -1314,5 +1382,16 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape') { closePopup(); hideTip(); }
     if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') run();
+    // 键盘可达性：Enter / Space 等价于点击。只处理显式标了 role="button"
+    // 的委托目标（五维卡 / 雷达顶点 / 逐章行 / 「显示全部」），其余一律放行。
+    // ⚠ 必须排除 meta/ctrl/alt —— 否则 Cmd+Enter 会在这里被吃掉，
+    // 变成「既触发 run() 又触发元素 click()」的双重动作。
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+    const t = e.target;
+    if (!t || typeof t.matches !== 'function') return;
+    if (!t.matches('[role="button"][tabindex]')) return;
+    e.preventDefault();                 // Space 默认会滚动页面，必须挡掉
+    t.click();
   });
 });
